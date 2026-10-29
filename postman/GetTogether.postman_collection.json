@@ -1,0 +1,10 @@
+{
+  "info": {"name": "GetTogether API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "variable": [{"key": "baseUrl", "value": "http://localhost:8000/api/v1"}],
+  "item": [
+    {"name": "Health check", "request": {"method": "GET", "url": "{{baseUrl}}/health"}},
+    {"name": "List facilities", "request": {"method": "GET", "url": "{{baseUrl}}/facilities"}},
+    {"name": "Create facility (development only; add auth before production)", "request": {"method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"name\": \"GetTogether Demo Hospital\",\n  \"facility_type\": \"hospital\",\n  \"address\": \"12 Example Road\",\n  \"city\": \"New Delhi\",\n  \"phone\": \"\"\n}"}, "url": "{{baseUrl}}/facilities"}},
+    {"name": "Verify booking code", "request": {"method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"code\": \"123456\"\n}"}, "url": "{{baseUrl}}/bookings/verify"}}
+  ]
+}

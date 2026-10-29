@@ -18,6 +18,8 @@ A modular starter for a healthcare discovery and booking platform.
 
 The API container uses the Compose `db` service and its configured Postgres credentials; `.env`'s `DATABASE_URL` is for running the backend outside Docker. Use a URL-safe password (letters, numbers, hyphens, and underscores) so it can be inserted into the connection URL without additional encoding. The Postgres data volume is retained when containers are removed, so changing database credentials does not reinitialize an existing volume.
 
+The API listens on the `PORT` environment variable when provided (default `8000`), so managed hosts can supply their required listening port without changing local Compose settings.
+
 For local backend startup outside Docker, run `Set-Location backend; alembic upgrade head` before starting Uvicorn (PowerShell). Production release requirements and external setup are documented in [docs/production-readiness.md](./docs/production-readiness.md).
 
 For a production frontend build, create `frontend/.env.production` from `frontend/.env.example`, set `VITE_API_BASE_URL` to the public HTTPS API URL ending in `/api/v1`, then run `npm run build` from `frontend`. Production builds fail instead of silently falling back to localhost if this value is missing or not HTTPS.
