@@ -96,3 +96,62 @@
 .booking-list-card>div:last-child{display:flex;flex-direction:column;align-items:flex-end;gap:14px}
 .booking-cancel-button{border:0;padding:0;background:transparent;color:#963e39;font:600 13px 'DM Sans';cursor:pointer}
 .booking-cancel-button:disabled{opacity:.6;cursor:wait}
+
+.admin-page{max-width:1180px;min-height:65vh;padding-top:38px;padding-bottom:58px}
+.admin-page h1{font:800 clamp(28px,3.2vw,40px)/1.2 Manrope,sans-serif;letter-spacing:-1px;margin:0 0 9px}
+.admin-demo-notice,.admin-success{padding:12px 15px;border-radius:9px;font-size:13px}
+.admin-demo-notice{background:#fff2dc;color:#72451d}
+.admin-success{background:#e3f1ef;color:#07565b}
+.admin-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:20px 0}
+.admin-stats article{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#fff;border:1px solid #e3e9e7;border-radius:11px;padding:17px}
+.admin-stats span{font-size:12px;color:#718483}
+.admin-stats strong{font:750 24px Manrope,sans-serif;color:#07565b}
+.admin-tabs{display:flex;gap:8px;overflow-x:auto;border-bottom:1px solid #dce5e4;margin:25px 0 20px}
+.admin-tabs button{flex-shrink:0;padding:11px 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:#718483;font:600 13px 'DM Sans';cursor:pointer}
+.admin-tabs button[aria-selected="true"]{color:#07565b;border-bottom-color:#07565b}
+.admin-section{display:grid;gap:18px}
+.admin-panel,.admin-form{background:#fff;border:1px solid #e3e9e7;border-radius:12px;padding:20px;box-shadow:0 3px 9px #1d42400b}
+.admin-panel-heading,.admin-item-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.admin-panel-heading{margin-bottom:17px}
+.admin-panel-heading h2,.admin-form h2,.admin-form h3{font:750 19px Manrope,sans-serif;margin:0}
+.admin-form h2,.admin-form h3{grid-column:1/-1}
+.admin-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 15px}
+.admin-form label,.admin-select-label,.admin-account-form label,.admin-verify-form label{display:grid;gap:6px;color:#263b3e;font-size:12px;font-weight:700}
+.admin-form input,.admin-form select,.admin-select-label select,.admin-account-form select,.admin-verify-form input{width:100%;height:42px;border:1px solid #dce5e4;border-radius:8px;padding:0 11px;background:#fff;color:#263b3e;font:400 13px 'DM Sans'}
+.admin-form input:focus-visible,.admin-form select:focus-visible,.admin-account-form select:focus-visible,.admin-verify-form input:focus-visible{outline:2px solid #07565b;outline-offset:1px}
+.admin-form .primary-link,.admin-actions{grid-column:1/-1}
+.admin-form .primary-link{justify-self:start}
+.admin-checkbox{display:flex!important;align-items:center;gap:9px!important}
+.admin-checkbox input{width:17px;height:17px}
+.admin-panel{margin-bottom:16px}
+.admin-select-label{min-width:190px}
+.admin-booking-filters{display:flex;align-items:end;gap:12px}
+.admin-list-heading{display:flex;align-items:center;justify-content:space-between;margin:23px 0 12px}
+.admin-list-heading h3{font:700 17px Manrope,sans-serif;margin:0}
+.admin-list-heading span{font-size:12px;color:#718483}
+.admin-empty,.admin-guidance{font-size:13px;color:#657b7c;line-height:1.55}
+.admin-guidance{margin:0 0 16px}
+.admin-item-list{display:grid;gap:12px}
+.admin-item{border:1px solid #e3e9e7;border-radius:10px;padding:16px}
+.admin-item h3,.admin-item h4{font:700 15px Manrope,sans-serif;margin:0 0 6px}
+.admin-item p{font-size:12px;color:#718483;margin:6px 0}
+.admin-status{display:inline-block;border-radius:999px;background:#fce9e8;color:#963e39;padding:5px 9px;font-size:10px;font-weight:700;text-transform:capitalize}
+.admin-status.active,.admin-status.verified{background:#e3f1ef;color:#07565b}
+.admin-item-form{box-shadow:none;padding:0;border:0;border-radius:0}
+.admin-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.admin-actions .primary-link,.admin-actions .secondary-button,.admin-actions .danger-button{grid-column:auto}
+.secondary-button,.danger-button{min-height:40px;padding:9px 13px;border:1px solid #cbd9d7;border-radius:8px;background:#fff;color:#07565b;font:600 12px 'DM Sans';cursor:pointer}
+.danger-button{border-color:#f0c9c7;color:#963e39}
+.secondary-button:disabled,.danger-button:disabled,.admin-form button:disabled{opacity:.6;cursor:wait}
+.admin-facility-row{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.admin-booking .admin-item-heading{margin-bottom:10px}
+.admin-booking .admin-item-heading>b{font-size:12px;color:#486466}
+.admin-booking-actions{margin-top:13px}
+.admin-verify-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.admin-verify-form label{max-width:180px}
+.admin-verify-form input{letter-spacing:2px}
+.admin-account-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.admin-account-form .admin-actions{grid-column:1/-1}
+.admin-account .admin-item-heading>div{min-width:0}
+.admin-account .admin-item-heading p{overflow-wrap:anywhere}
+@media(max-width:760px){.admin-page{padding:28px 17px 45px}.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.admin-stats article{padding:13px}.admin-stats strong{font-size:20px}.admin-panel,.admin-form{padding:15px}.admin-form,.admin-account-form{grid-template-columns:1fr}.admin-form h2,.admin-form h3,.admin-form .primary-link,.admin-actions,.admin-account-form .admin-actions{grid-column:1}.admin-panel-heading,.admin-facility-row{align-items:flex-start;flex-direction:column}.admin-booking-filters{width:100%;flex-direction:column;align-items:stretch}.admin-select-label{width:100%}.admin-verify-form{align-items:stretch;flex-direction:column;width:100%}.admin-verify-form label{max-width:none}.admin-booking-actions>.danger-button{align-self:flex-start}}

@@ -10,6 +10,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import { AuthProvider } from "./components/AuthContext";
 import MyBookingsPage from "./pages/MyBookingsPage";
 import PasswordResetPage from "./pages/PasswordResetPage";
+import AdminPage from "./pages/AdminPage";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/bookings" element={<MyBookingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/facilities/:facilityId" element={<FacilityDetailPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

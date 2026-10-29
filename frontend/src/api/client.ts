@@ -71,6 +71,7 @@ export type Facility = {
   address: string;
   city: string;
   phone: string;
+  is_active: boolean;
 };
 
 export type Service = {
@@ -87,6 +88,11 @@ export type Service = {
   facility_address: string;
   facility_phone: string;
 };
+
+export type ManagedService = Omit<
+  Service,
+  "facility_name" | "facility_city" | "facility_address" | "facility_phone"
+>;
 
 export type Account = {
   id: number;
@@ -164,6 +170,39 @@ export type Booking = {
   service_name?: string;
 };
 
+export type AdminDashboard = {
+  facilities: number;
+  services: number;
+  bookings: number;
+  users: number | null;
+};
+
+export type AdminBooking = {
+  id: number;
+  facility_id: number;
+  service_id: number;
+  appointment_at: string;
+  payment_method: "physical";
+  payment_status: string;
+  status: string;
+  patient_name: string;
+  patient_email_masked: string;
+  facility_name: string;
+  service_name: string;
+};
+
+export type AdminUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: Account["role"];
+  facility_id: number | null;
+  facility_name: string | null;
+  is_active: boolean;
+  email_verified: boolean;
+  created_at: string;
+};
+
 export function createBooking(payload: {
   facility_id: number;
   service_id: number;
@@ -223,6 +262,89 @@ export function getFacilityServices(facilityId: number) {
   return request<Omit<Service, "facility_name" | "facility_city" | "facility_address" | "facility_phone">[]>(
     `/facilities/${facilityId}/services`
   );
+}
+
+export function getAdminDashboard() {
+  return request<AdminDashboard>("/admin/dashboard");
+}
+
+export function getManagedFacilities() {
+  return request<Facility[]>("/admin/facilities");
+}
+
+export function createFacility(payload: Omit<Facility, "id" | "is_active">) {
+  return request<Facility>("/facilities", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateManagedFacility(
+  facilityId: number,
+  payload: Partial<Omit<Facility, "id">>
+) {
+  return request<Facility>(`/admin/facilities/${facilityId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getManagedServices(facilityId: number) {
+  return request<ManagedService[]>(`/admin/facilities/${facilityId}/services`);
+}
+
+export function createFacilityService(
+  facilityId: number,
+  payload: Omit<Service, "id" | "facility_id" | "is_active" | "facility_name" | "facility_city" | "facility_address" | "facility_phone">
+) {
+  return request<ManagedService>(`/facilities/${facilityId}/services`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateManagedService(
+  facilityId: number,
+  serviceId: number,
+  payload: Partial<Omit<Service, "id" | "facility_id" | "facility_name" | "facility_city" | "facility_address" | "facility_phone">>
+) {
+  return request<ManagedService>(`/admin/facilities/${facilityId}/services/${serviceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getManagedBookings(filters?: { status?: string; facility_id?: number }) {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.facility_id) params.set("facility_id", String(filters.facility_id));
+  const query = params.toString();
+  return request<AdminBooking[]>(`/admin/bookings${query ? `?${query}` : ""}`);
+}
+
+export function cancelManagedBooking(bookingId: number) {
+  return request<AdminBooking>(`/admin/bookings/${bookingId}/cancel`, { method: "POST" });
+}
+
+export function verifyBooking(code: string) {
+  return request<{ valid: boolean; message: string; booking_id?: number }>("/bookings/verify", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export function getManagedUsers() {
+  return request<AdminUser[]>("/admin/users");
+}
+
+export function updateManagedUser(
+  userId: number,
+  payload: { is_active?: boolean; role?: "patient" | "facility_staff"; facility_id?: number }
+) {
+  return request<AdminUser>(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function sendAssistantMessage(message: string) {
