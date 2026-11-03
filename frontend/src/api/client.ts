@@ -109,13 +109,8 @@ export type AccountSession = {
   user: Account;
 };
 
-export type RegistrationPending = {
-  message: string;
-  email: string;
-};
-
-export function registerAccount(payload: { name: string; email: string; phone?: string; password: string }) {
-  return request<RegistrationPending>("/auth/register", {
+export function registerAccount(payload: { email: string; password: string }) {
+  return request<AccountSession>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });

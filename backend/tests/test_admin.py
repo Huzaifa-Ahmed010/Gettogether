@@ -399,32 +399,37 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
             cleanup_accounts(*account_ids)
 
 
-def test_unverified_accounts_are_hidden_and_not_mutable_in_admin_dashboard(platform_admin_headers):
+def test_unverified_accounts_are_visible_and_manageable_in_admin_dashboard(platform_admin_headers):
     unverified_id, _, _ = create_account("patient", verified=False)
     try:
         with TestClient(app) as client:
             response = client.get("/api/v1/admin/users", headers=platform_admin_headers)
             assert response.status_code == 200
-            assert all(account["id"] != unverified_id for account in response.json())
+            listed_account = next(
+                account for account in response.json() if account["id"] == unverified_id
+            )
+            assert listed_account["email_verified"] is False
             assert client.get(
                 "/api/v1/admin/users?include_inactive=false",
                 headers=platform_admin_headers,
             ).status_code == 200
-            assert all(
-                account["id"] != unverified_id
+            assert unverified_id in {
+                account["id"]
                 for account in client.get(
                     "/api/v1/admin/users?include_inactive=false",
                     headers=platform_admin_headers,
                 ).json()
-            )
+            }
             assert client.get(
                 "/api/v1/admin/dashboard",
                 headers=platform_admin_headers,
             ).json()["users"] == len(response.json())
-            assert client.patch(
+            updated = client.patch(
                 f"/api/v1/admin/users/{unverified_id}",
                 json={"is_active": False},
                 headers=platform_admin_headers,
-            ).status_code == 404
+            )
+            assert updated.status_code == 200
+            assert updated.json()["is_active"] is False
     finally:
         cleanup_accounts(unverified_id)

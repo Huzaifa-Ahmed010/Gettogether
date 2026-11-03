@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,7 @@ from app.core.config import settings
 from app.core.audit import record_audit_event
 from app.core.email import send_password_reset_code, send_verification_code
 from app.db.session import get_db
-from app.models import AuditEvent, EmailVerification, PasswordReset, User
+from app.models import EmailVerification, PasswordReset, User
 from app.schemas.auth import (
     EmailCodeRequest,
     LoginRequest,
@@ -29,7 +30,6 @@ from app.schemas.auth import (
     ResendVerificationResponse,
     TokenResponse,
     UserRead,
-    VerificationPendingResponse,
 )
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -66,7 +66,7 @@ def issue_email_code(user: User, db: Session) -> None:
 
     try:
         send_verification_code(user.email, code)
-    except (OSError, smtplib.SMTPException, RuntimeError) as error:
+    except (OSError, RuntimeError, smtplib.SMTPException) as error:
         logger.exception("Email verification delivery failed")
         db.delete(verification)
         db.commit()
@@ -100,7 +100,7 @@ def issue_password_reset_code(user: User, db: Session) -> None:
 
     try:
         send_password_reset_code(user.email, code)
-    except (OSError, smtplib.SMTPException, RuntimeError):
+    except (OSError, RuntimeError, smtplib.SMTPException):
         logger.exception("Password reset email delivery failed")
         db.delete(reset)
         db.commit()
@@ -154,7 +154,6 @@ def get_current_user(
     if (
         user is None
         or not user.is_active
-        or not user.email_verified
         or payload.get("ver", 0) != user.token_version
     ):
         raise unauthorized
@@ -163,16 +162,19 @@ def get_current_user(
 
 @router.post(
     "/register",
-    response_model=VerificationPendingResponse,
-    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TokenResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     email = str(payload.email).strip().lower()
     if db.query(User.id).filter(User.email == email).first():
         raise HTTPException(status_code=409, detail="An account with this email already exists")
 
+    default_name = " ".join(
+        part for part in re.split(r"[._-]+", email.partition("@")[0]) if part
+    ).title() or "GetTogether User"
     user = User(
-        name=payload.name.strip(),
+        name=payload.name or default_name,
         email=email,
         phone=payload.phone,
         password_hash=password_hash.hash(payload.password),
@@ -185,21 +187,9 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="An account with this email already exists")
     db.refresh(user)
     record_audit_event(db, user, "account.registered", "user", user.id)
-    try:
-        issue_email_code(user, db)
-    except HTTPException as error:
-        if error.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
-            db.query(AuditEvent).filter(
-                AuditEvent.actor_user_id == user.id,
-                AuditEvent.action == "account.registered",
-            ).delete(synchronize_session=False)
-            db.delete(user)
-            db.commit()
-        raise
-    return VerificationPendingResponse(
-        message="Enter the verification code sent to your email address.",
-        email=email,
-    )
+    db.commit()
+    db.refresh(user)
+    return token_response(user)
 
 
 @router.post("/verify-email", response_model=TokenResponse)
@@ -266,11 +256,10 @@ def resend_verification(payload: ResendVerificationRequest, db: Session = Depend
 
 @router.post("/request-password-reset", response_model=PasswordResetResponse, status_code=202)
 def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
-    generic_message = "If the address belongs to an active verified account, a reset code will be sent."
+    generic_message = "If the address belongs to an active account, a reset code will be sent."
     email = str(payload.email).strip().lower()
     user = db.query(User).filter(
         User.email == email,
-        User.email_verified.is_(True),
         User.is_active.is_(True),
     ).first()
     if user is None:
@@ -341,11 +330,6 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is disabled")
-    if not user.email_verified:
-        raise HTTPException(
-            status_code=403,
-            detail="Email not verified. Enter your email verification code to continue.",
-        )
     record_audit_event(db, user, "account.login", "user", user.id)
     db.commit()
     return token_response(user)

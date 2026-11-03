@@ -57,7 +57,7 @@ def get_dashboard(db: Session = Depends(get_db), user: User = Depends(get_curren
         bookings_query = bookings_query.filter(Booking.facility_id == user.facility_id)
         users_count = None
     else:
-        users_count = db.query(User.id).filter(User.email_verified.is_(True)).count()
+        users_count = db.query(User.id).count()
     return AdminDashboardRead(
         facilities=facilities_query.filter(Facility.is_active.is_(True)).count(),
         services=services_query.filter(
@@ -309,7 +309,6 @@ def list_managed_users(
 ):
     require_platform_admin(user)
     query = db.query(User, Facility.name).outerjoin(Facility, User.facility_id == Facility.id)
-    query = query.filter(User.email_verified.is_(True))
     if not include_inactive:
         query = query.filter(User.is_active.is_(True))
     rows = query.order_by(User.created_at.desc(), User.id.desc()).all()
@@ -332,7 +331,7 @@ def update_managed_user(
     require_platform_admin(user)
     account = (
         db.query(User)
-        .filter(User.id == user_id, User.email_verified.is_(True))
+        .filter(User.id == user_id)
         .first()
     )
     if account is None:
@@ -355,8 +354,6 @@ def update_managed_user(
         facility = db.get(Facility, next_facility_id)
         if facility is None or not facility.is_active:
             raise HTTPException(422, "The assigned facility must exist and be active")
-        if not account.email_verified:
-            raise HTTPException(409, "The account must be verified before staff assignment")
     elif next_role == "patient":
         next_facility_id = None
 

@@ -8,7 +8,7 @@ from app.main import app
 from app.models import AuditEvent, EmailVerification, PasswordReset, User
 
 
-def test_register_login_and_protected_profile(otp_delivery):
+def test_register_login_and_protected_profile():
     email = f"user-{uuid4().hex}@example.com"
     password = "correct horse battery staple"
     user_id = None
@@ -17,39 +17,17 @@ def test_register_login_and_protected_profile(otp_delivery):
         try:
             registration = client.post(
                 "/api/v1/auth/register",
-                json={
-                    "name": "Test Patient",
-                    "email": email.upper(),
-                    "phone": "98765 43210",
-                    "password": password,
-                },
+                json={"email": email.upper(), "password": password},
             )
-            assert registration.status_code == 202
-            pending = registration.json()
+            assert registration.status_code == 201
+            account = registration.json()
             with SessionLocal() as db:
-                pending_user = db.query(User).filter(User.email == email).first()
-                assert pending_user is not None
-                assert pending_user.phone == "+919876543210"
-                user_id = pending_user.id
-            assert pending["email"] == email
-            assert "development_otp" not in pending
-
-            assert client.post(
-                "/api/v1/auth/login",
-                json={"email": email, "password": password},
-            ).status_code == 403
-
-            verified = client.post(
-                "/api/v1/auth/verify-email",
-                json={"email": email, "code": "not-a-code"},
-            )
-            assert verified.status_code == 422
-            verified = client.post(
-                "/api/v1/auth/verify-email",
-                json={"email": email, "code": otp_delivery["verification"][email]},
-            )
-            assert verified.status_code == 200
-            account = verified.json()
+                created_user = db.query(User).filter(User.email == email).first()
+                assert created_user is not None
+                assert created_user.email_verified is False
+                assert created_user.phone is None
+                assert created_user.name
+                user_id = created_user.id
             user_id = account["user"]["id"]
             assert account["user"]["email"] == email
             assert "password" not in account["user"]
@@ -77,20 +55,15 @@ def test_register_login_and_protected_profile(otp_delivery):
             ).status_code == 401
             assert client.post(
                 "/api/v1/auth/register",
-                json={"name": "Duplicate", "email": email, "password": password},
+                json={"email": email, "password": password},
             ).status_code == 409
             assert client.post(
                 "/api/v1/auth/register",
-                json={"name": "Short Password", "email": f"short-{email}", "password": "short"},
-            ).status_code == 422
-            assert client.post(
-                "/api/v1/auth/register",
-                json={"name": "  ", "email": f"name-{email}", "password": password},
+                json={"email": f"short-{email}", "password": "short"},
             ).status_code == 422
             assert client.post(
                 "/api/v1/auth/register",
                 json={
-                    "name": "Invalid Phone",
                     "email": f"phone-{email}",
                     "phone": "123",
                     "password": password,
@@ -116,15 +89,24 @@ def test_register_login_and_protected_profile(otp_delivery):
 
 def test_email_verification_resend_cooldown_and_invalid_attempts(otp_delivery):
     email = f"verify-{uuid4().hex}@example.com"
-    password = "correct horse battery staple"
     user_id = None
     with TestClient(app) as client:
         try:
-            registration = client.post(
-                "/api/v1/auth/register",
-                json={"name": "Verification Test", "email": email, "password": password},
-            )
-            assert registration.status_code == 202
+            from app.api.routes.auth import issue_email_code
+
+            with SessionLocal() as db:
+                user = User(
+                    name="Verification Test",
+                    email=email,
+                    password_hash="test-only-password-hash",
+                    email_verified=False,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                user_id = user.id
+                issue_email_code(user, db)
+
             assert client.post(
                 "/api/v1/auth/resend-verification",
                 json={"email": email},
@@ -133,7 +115,6 @@ def test_email_verification_resend_cooldown_and_invalid_attempts(otp_delivery):
             with SessionLocal() as db:
                 user = db.query(User).filter(User.email == email).first()
                 assert user is not None
-                user_id = user.id
                 verification = db.query(EmailVerification).filter(
                     EmailVerification.user_id == user.id
                 ).first()
@@ -183,7 +164,7 @@ def test_profile_rejects_invalid_access_token():
     assert response.status_code == 401
 
 
-def test_email_delivery_failure_allows_immediate_retry(monkeypatch):
+def test_registration_does_not_depend_on_email_delivery(monkeypatch):
     import app.api.routes.auth as auth_routes
 
     email = f"delivery-{uuid4().hex}@example.com"
@@ -198,25 +179,23 @@ def test_email_delivery_failure_allows_immediate_retry(monkeypatch):
             response = client.post(
                 "/api/v1/auth/register",
                 json={
-                    "name": "Delivery Test",
                     "email": email,
                     "password": "correct horse battery staple",
                 },
             )
-            assert response.status_code == 503
-            assert "No account was created" in response.json()["detail"]
+            assert response.status_code == 201
+            user_id = response.json()["user"]["id"]
+            assert client.post(
+                "/api/v1/auth/login",
+                json={"email": email, "password": "correct horse battery staple"},
+            ).status_code == 200
             with SessionLocal() as db:
                 user = db.query(User).filter(User.email == email).first()
-                assert user is None
-            retry = client.post(
-                "/api/v1/auth/register",
-                json={
-                    "name": "Delivery Test",
-                    "email": email,
-                    "password": "correct horse battery staple",
-                },
-            )
-            assert retry.status_code == 503
+                assert user is not None
+                assert user.email_verified is False
+                assert db.query(EmailVerification).filter(
+                    EmailVerification.user_id == user_id
+                ).first() is None
         finally:
             if user_id is not None:
                 with SessionLocal() as db:
@@ -239,16 +218,10 @@ def test_password_reset_revokes_existing_access_tokens(otp_delivery):
         try:
             registration = client.post(
                 "/api/v1/auth/register",
-                json={"name": "Reset User", "email": email, "password": old_password},
+                json={"email": email, "password": old_password},
             )
-            assert registration.status_code == 202
-            assert "development_otp" not in registration.json()
-            verified = client.post(
-                "/api/v1/auth/verify-email",
-                json={"email": email, "code": otp_delivery["verification"][email]},
-            )
-            assert verified.status_code == 200
-            old_token = verified.json()["access_token"]
+            assert registration.status_code == 201
+            old_token = registration.json()["access_token"]
             with SessionLocal() as db:
                 user = db.query(User).filter(User.email == email).first()
                 assert user is not None

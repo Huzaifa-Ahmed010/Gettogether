@@ -63,7 +63,7 @@ class Settings(BaseSettings):
             if not self.redis_url.startswith("rediss://"):
                 raise ValueError("Production requires a TLS-protected REDIS_URL (rediss://)")
             if not self.smtp_host or not self.smtp_from_email:
-                raise ValueError("Production requires SMTP_HOST and SMTP_FROM_EMAIL for account verification")
+                raise ValueError("Production requires SMTP_HOST and SMTP_FROM_EMAIL for account recovery")
             if self.smtp_use_ssl and self.smtp_use_starttls:
                 raise ValueError("SMTP_USE_SSL and SMTP_USE_STARTTLS cannot both be enabled")
             if not self.smtp_use_ssl and not self.smtp_use_starttls:

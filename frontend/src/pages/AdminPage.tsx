@@ -576,20 +576,20 @@ export default function AdminPage() {
 
       {tab === "accounts" && isPlatformAdmin && <section className="admin-panel">
         <div className="admin-panel-heading"><div><p className="eyebrow">ACCESS CONTROL</p><h2>User accounts</h2></div></div>
-        <p className="admin-guidance">Only verified accounts can be assigned as facility staff. Dashboard changes sign the user out. Platform administrator roles are operator-managed and cannot be changed here.</p>
+        <p className="admin-guidance">Email verification is temporarily paused. Dashboard access changes sign the user out. Platform administrator roles are operator-managed and cannot be changed here.</p>
         {accounts.length === 0 && <p className="admin-empty">No accounts are registered yet.</p>}
         <div className="admin-item-list">
           {accounts.map((account) => <article className="admin-item admin-account" key={account.id}>
             <div className="admin-item-heading"><div><h3>{account.name}</h3><p>{account.email}</p></div><span className={account.is_active ? "admin-status active" : "admin-status"}>{account.is_active ? "Active" : "Inactive"}</span></div>
-            <p>Current access: {account.role.replace("_", " ")}{account.facility_name ? ` · ${account.facility_name}` : ""} · {account.email_verified ? "Verified" : "Not verified"}</p>
+            <p>Current access: {account.role.replace("_", " ")}{account.facility_name ? ` · ${account.facility_name}` : ""} · {account.email_verified ? "Email verification complete" : "Email verification deferred"}</p>
             {account.role !== "platform_admin" && <form className="admin-account-form" onSubmit={(event) => submitAccountUpdate(event, account)}>
-              <label>Role<select name="role" defaultValue={account.role === "facility_staff" ? "facility_staff" : "patient"} disabled={!account.email_verified}>
+              <label>Role<select name="role" defaultValue={account.role === "facility_staff" ? "facility_staff" : "patient"}>
                 <option value="patient">Patient</option><option value="facility_staff">Facility staff</option>
               </select></label>
-              <label>Assigned facility<select name="facility_id" defaultValue={account.facility_id ?? ""} disabled={!account.email_verified}>
+              <label>Assigned facility<select name="facility_id" defaultValue={account.facility_id ?? ""}>
                 <option value="">Choose facility</option>{facilities.filter((facility) => facility.is_active).map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}
               </select></label>
-              <div className="admin-actions"><button className="primary-link" disabled={savingAccountAction?.accountId === account.id || !account.email_verified}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "save" ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={savingAccountAction?.accountId === account.id} onClick={() => toggleAccount(account)}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "toggle" ? account.is_active ? "Deactivating…" : "Activating…" : account.is_active ? "Deactivate account" : "Activate account"}</button></div>
+              <div className="admin-actions"><button className="primary-link" disabled={savingAccountAction?.accountId === account.id}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "save" ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={savingAccountAction?.accountId === account.id} onClick={() => toggleAccount(account)}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "toggle" ? account.is_active ? "Deactivating…" : "Activating…" : account.is_active ? "Deactivate account" : "Activate account"}</button></div>
             </form>}
           </article>)}
         </div>

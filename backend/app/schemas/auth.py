@@ -5,15 +5,19 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
-    name: str = Field(min_length=2, max_length=120)
+    name: str | None = Field(default=None, min_length=2, max_length=120)
     email: EmailStr = Field(max_length=254)
     phone: str | None = Field(default=None, max_length=24)
     password: str = Field(min_length=12, max_length=128)
 
     @field_validator("name")
     @classmethod
-    def normalize_name(cls, value: str) -> str:
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         name = value.strip()
+        if not name:
+            return None
         if len(name) < 2:
             raise ValueError("Name must contain at least two non-space characters")
         return name

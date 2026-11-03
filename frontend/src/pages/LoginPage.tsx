@@ -1,19 +1,15 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { loginAccount, registerAccount, resendEmailVerification, verifyEmailAddress } from "../api/client";
+import { loginAccount, registerAccount } from "../api/client";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { user, saveSession, signOut } = useAuth();
-  const [mode, setMode] = useState<"login" | "register" | "verify">("login");
-  const [name, setName] = useState("");
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,42 +19,17 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (mode === "register") {
-        const pending = await registerAccount({
-          name,
-          email,
-          phone: phone || undefined,
-          password,
-        });
-        setEmail(pending.email);
-        setNotice(pending.message);
-        setMode("verify");
+        const response = await registerAccount({ email, password });
+        saveSession(response);
+        navigate("/");
         return;
       }
-      const response = mode === "verify"
-        ? await verifyEmailAddress({ email, code })
-        : await loginAccount({ email, password });
+      const response = await loginAccount({ email, password });
       saveSession(response);
       navigate("/");
     } catch (reason) {
       const message = reason instanceof Error ? reason.message.replace(/^API error \d+: /, "") : "Unable to access your account.";
       setError(message);
-      if (mode === "login" && message.toLowerCase().includes("email not verified")) {
-        setMode("verify");
-        setNotice("Enter the verification code sent to your email address.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function resendCode() {
-    setError("");
-    setLoading(true);
-    try {
-      const response = await resendEmailVerification(email);
-      setNotice(response.message);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message.replace(/^API error \d+: /, "") : "Unable to resend the verification email.");
     } finally {
       setLoading(false);
     }
@@ -78,23 +49,19 @@ export default function LoginPage() {
   return <SiteLayout>
     <main className="account-page content">
       <p className="eyebrow">YOUR GETTOGETHER ACCOUNT</p>
-      <h1>{mode === "login" ? "Welcome back" : mode === "register" ? "Create your account" : "Verify your email"}</h1>
+      <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
       <p className="directory-intro">Sign in to your GetTogether account or create one to get started.</p>
-      {mode !== "verify" && <div className="account-tabs" role="tablist" aria-label="Account access">
+      <div className="account-tabs" role="tablist" aria-label="Account access">
         <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => { setMode("login"); setError(""); }}>Sign in</button>
         <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => { setMode("register"); setError(""); }}>Create account</button>
-      </div>}
+      </div>
       <form className="account-form" onSubmit={submit}>
-        {mode === "register" && <label>Full name<input autoComplete="name" required minLength={2} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label>}
-        {mode === "register" && <label>Mobile number (optional)<input type="tel" autoComplete="tel" maxLength={24} placeholder="+91 98765 43210" value={phone} onChange={(event) => setPhone(event.target.value)} /><small>Email is required for verification and account recovery. Mobile verification is not enabled yet.</small></label>}
-        <label>Email address<input type="email" autoComplete="email" required maxLength={254} readOnly={mode === "verify"} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        {mode === "verify" ? <label>6-digit email code<input inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" minLength={6} maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label> : <label>Password<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "register" ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{mode === "register" && <small>Use at least 12 characters.</small>}</label>}
-        {notice && <p className="account-notice" role="status">{notice}</p>}
+        <label>Email address<input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Password<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "register" ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{mode === "register" && <small>Use at least 12 characters.</small>}</label>
         {error && <p className="account-error" role="alert">{error}</p>}
-        <button className="primary-link" disabled={loading}>{loading ? "Please wait…" : mode === "login" ? "Sign in" : mode === "register" ? "Create account" : "Verify email"}</button>
+        <button className="primary-link" disabled={loading}>{loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}</button>
       </form>
       {mode === "login" && <p className="account-secondary-link"><Link to="/reset-password">Forgot your password?</Link></p>}
-      {mode === "verify" && <div className="account-secondary-actions"><button type="button" onClick={resendCode} disabled={loading}>Resend code</button><button type="button" onClick={() => { setMode("login"); setError(""); setNotice(""); }}>Back to sign in</button></div>}
     </main>
   </SiteLayout>;
 }

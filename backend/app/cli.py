@@ -9,17 +9,17 @@ from app.models import Facility, User
 def main() -> int:
     parser = argparse.ArgumentParser(description="GetTogether operator account management")
     commands = parser.add_subparsers(dest="command", required=True)
-    promote_admin = commands.add_parser("promote-admin", help="Promote an existing verified user to platform admin")
+    promote_admin = commands.add_parser("promote-admin", help="Promote an existing user to platform admin")
     promote_admin.add_argument("email")
-    assign_staff = commands.add_parser("assign-staff", help="Assign an existing verified user to a facility")
+    assign_staff = commands.add_parser("assign-staff", help="Assign an existing user to a facility")
     assign_staff.add_argument("email")
     assign_staff.add_argument("facility_id", type=int)
     args = parser.parse_args()
 
     with SessionLocal() as db:
         user = db.query(User).filter(User.email == args.email.strip().lower()).first()
-        if user is None or not user.email_verified or not user.is_active:
-            print("The account must exist, be email-verified, and be active.", file=sys.stderr)
+        if user is None or not user.is_active:
+            print("The account must exist and be active.", file=sys.stderr)
             return 1
         if args.command == "promote-admin":
             user.role = "platform_admin"

@@ -23,7 +23,7 @@ The application code has production-oriented controls, but this repository does 
 5. Verify `/api/v1/health` (process liveness) and `/api/v1/readyz` (PostgreSQL, expected migration revision, and Redis).
 6. Confirm API documentation endpoints are unavailable in production and that invalid hosts/origins are rejected.
 7. Promote the first verified operator account with `python -m app.cli promote-admin verified-admin@example.com`; assign facility staff with `python -m app.cli assign-staff verified-staff@example.com FACILITY_ID`.
-8. Exercise registration, email verification, password reset, login, booking, cancellation, facility-scoped check-in, and rate-limit behavior in staging before opening access.
+8. Exercise registration (email verification is temporarily paused), login, password reset, booking, cancellation, facility-scoped check-in, and rate-limit behavior in staging before opening access. Confirm password-reset email delivery through the configured SMTP provider.
 
 ## Operational and privacy gates
 
