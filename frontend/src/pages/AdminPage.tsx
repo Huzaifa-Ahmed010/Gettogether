@@ -458,8 +458,6 @@ export default function AdminPage() {
     <main className="admin-page content">
       <p className="eyebrow">GETTOGETHER MANAGEMENT</p>
       <h1>{isPlatformAdmin ? "Admin panel" : "Facility workspace"}</h1>
-      <p className="directory-intro">Manage service listings and bookings using your assigned access.</p>
-      <p className="admin-demo-notice">Demo only: use fake records. Do not enter real patient information.</p>
       {error && <p ref={errorRef} className="notice" role="alert">{error}</p>}
       {notice && <p className="admin-success" role="status">{notice}</p>}
       {loading && <p role="status">Loading management data…</p>}
