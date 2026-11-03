@@ -52,12 +52,42 @@ export default function AdminPage() {
   const [codes, setCodes] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savingAccountId, setSavingAccountId] = useState<number | null>(null);
+  const [busyDirectoryActions, setBusyDirectoryActions] = useState<Set<string>>(() => new Set());
+  const [savingAccountAction, setSavingAccountAction] = useState<{
+    accountId: number;
+    action: "save" | "toggle";
+  } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const facilityFormRef = useRef<HTMLFormElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
   const selectedFacility = facilities.find((facility) => facility.id === selectedFacilityId) ?? null;
+
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
+
+  function isDirectoryActionBusy(action: string) {
+    return busyDirectoryActions.has(action);
+  }
+
+  function isFacilityBusy(facilityId: number) {
+    return [...busyDirectoryActions].some((action) => action.startsWith(`facility:${facilityId}:`));
+  }
+
+  function isServiceBusy(serviceId: number) {
+    return [...busyDirectoryActions].some((action) => action.startsWith(`service:${serviceId}:`));
+  }
+
+  function setDirectoryActionBusy(action: string, busy: boolean) {
+    setBusyDirectoryActions((current) => {
+      const next = new Set(current);
+      if (busy) next.add(action);
+      else next.delete(action);
+      return next;
+    });
+  }
 
   async function loadDashboard() {
     setDashboard(await getAdminDashboard());
@@ -168,7 +198,7 @@ export default function AdminPage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    setSaving(true);
+    setDirectoryActionBusy("facility:create", true);
     setError("");
     setNotice("");
     try {
@@ -186,7 +216,7 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy("facility:create", false);
     }
   }
 
@@ -202,7 +232,8 @@ export default function AdminPage() {
       phone: String(form.get("phone") ?? ""),
     };
     if (isPlatformAdmin) payload.is_active = form.get("is_active") === "on";
-    setSaving(true);
+    const action = `facility:${selectedFacility.id}:save`;
+    setDirectoryActionBusy(action, true);
     setError("");
     setNotice("");
     try {
@@ -212,7 +243,7 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy(action, false);
     }
   }
 
@@ -221,6 +252,9 @@ export default function AdminPage() {
     if (!selectedFacility) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const action = existing
+      ? `service:${existing.id}:save`
+      : `service:create:${selectedFacility.id}`;
     const payload = {
       name: String(form.get("name")),
       category: String(form.get("category")),
@@ -228,7 +262,7 @@ export default function AdminPage() {
       provider_name: String(form.get("provider_name") ?? ""),
       fee_paise: Math.round(Number(form.get("fee")) * 100),
     };
-    setSaving(true);
+    setDirectoryActionBusy(action, true);
     setError("");
     setNotice("");
     try {
@@ -245,14 +279,15 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy(action, false);
     }
   }
 
   async function toggleFacility(facility: Facility) {
     const action = facility.is_active ? "deactivate" : "activate";
     if (!window.confirm(`${action[0].toUpperCase()}${action.slice(1)} ${facility.name}?`)) return;
-    setSaving(true);
+    const busyAction = `facility:${facility.id}:status`;
+    setDirectoryActionBusy(busyAction, true);
     setError("");
     setNotice("");
     try {
@@ -262,13 +297,14 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy(busyAction, false);
     }
   }
 
   async function deleteFacility(facility: Facility) {
     if (!window.confirm(`Permanently delete ${facility.name}? This cannot be undone.`)) return;
-    setSaving(true);
+    const busyAction = `facility:${facility.id}:delete`;
+    setDirectoryActionBusy(busyAction, true);
     setError("");
     setNotice("");
     try {
@@ -278,13 +314,14 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy(busyAction, false);
     }
   }
 
   async function toggleService(service: ManagedService) {
     if (!selectedFacility) return;
-    setSaving(true);
+    const busyAction = `service:${service.id}:status`;
+    setDirectoryActionBusy(busyAction, true);
     setError("");
     setNotice("");
     try {
@@ -295,14 +332,15 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy(busyAction, false);
     }
   }
 
   async function deleteService(service: ManagedService) {
     if (!selectedFacility) return;
     if (!window.confirm(`Permanently delete ${service.name}? This cannot be undone.`)) return;
-    setSaving(true);
+    const busyAction = `service:${service.id}:delete`;
+    setDirectoryActionBusy(busyAction, true);
     setError("");
     setNotice("");
     try {
@@ -313,7 +351,7 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setDirectoryActionBusy(busyAction, false);
     }
   }
 
@@ -378,7 +416,7 @@ export default function AdminPage() {
       }
       payload.facility_id = facilityId;
     }
-    setSavingAccountId(account.id);
+    setSavingAccountAction({ accountId: account.id, action: "save" });
     setError("");
     setNotice("");
     try {
@@ -389,14 +427,14 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSavingAccountId(null);
+      setSavingAccountAction(null);
     }
   }
 
   async function toggleAccount(account: AdminUser) {
     const action = account.is_active ? "deactivate" : "activate";
     if (!window.confirm(`${action[0].toUpperCase()}${action.slice(1)} ${account.name}'s account?`)) return;
-    setSavingAccountId(account.id);
+    setSavingAccountAction({ accountId: account.id, action: "toggle" });
     setError("");
     setNotice("");
     try {
@@ -407,7 +445,7 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSavingAccountId(null);
+      setSavingAccountAction(null);
     }
   }
 
@@ -422,7 +460,7 @@ export default function AdminPage() {
       <h1>{isPlatformAdmin ? "Admin panel" : "Facility workspace"}</h1>
       <p className="directory-intro">Manage service listings and bookings using your assigned access.</p>
       <p className="admin-demo-notice">Demo only: use fake records. Do not enter real patient information.</p>
-      {error && <p className="notice" role="alert">{error}</p>}
+      {error && <p ref={errorRef} className="notice" role="alert">{error}</p>}
       {notice && <p className="admin-success" role="status">{notice}</p>}
       {loading && <p role="status">Loading management data…</p>}
 
@@ -443,7 +481,7 @@ export default function AdminPage() {
         {isPlatformAdmin && <form className="admin-form" onSubmit={submitNewFacility}>
           <h2>Add a facility</h2>
           <FacilityFields />
-          <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Add facility"}</button>
+          <button className="primary-link" disabled={busyDirectoryActions.has("facility:create")}>{busyDirectoryActions.has("facility:create") ? "Saving…" : "Add facility"}</button>
         </form>}
 
         <section className="admin-panel">
@@ -462,8 +500,8 @@ export default function AdminPage() {
               <FacilityFields facility={selectedFacility} />
               {isPlatformAdmin && <label className="admin-checkbox"><input type="checkbox" name="is_active" defaultChecked={selectedFacility.is_active} /> Listed publicly</label>}
               <div className="admin-actions">
-                <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Save facility"}</button>
-                {isPlatformAdmin && <button type="button" className="danger-button" disabled={saving} onClick={() => deleteFacility(selectedFacility)}>Delete facility</button>}
+                <button className="primary-link" disabled={isFacilityBusy(selectedFacility.id)}>{isDirectoryActionBusy(`facility:${selectedFacility.id}:save`) ? "Saving…" : "Save facility"}</button>
+                {isPlatformAdmin && <button type="button" className="danger-button" disabled={isFacilityBusy(selectedFacility.id)} onClick={() => deleteFacility(selectedFacility)}>{isDirectoryActionBusy(`facility:${selectedFacility.id}:delete`) ? "Deleting…" : "Delete facility"}</button>}
               </div>
             </form>
 
@@ -475,9 +513,9 @@ export default function AdminPage() {
                   <div className="admin-item-heading"><div><h4>{service.name}</h4><span className={service.is_active ? "admin-status active" : "admin-status"}>{service.is_active ? "Active" : "Inactive"}</span></div></div>
                   <ServiceFields service={service} />
                   <div className="admin-actions">
-                    <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Save service"}</button>
-                    <button type="button" className="secondary-button" disabled={saving} onClick={() => toggleService(service)}>{service.is_active ? "Deactivate" : "Activate"}</button>
-                    {isPlatformAdmin && <button type="button" className="danger-button" disabled={saving} onClick={() => deleteService(service)}>Delete service</button>}
+                    <button className="primary-link" disabled={isServiceBusy(service.id)}>{isDirectoryActionBusy(`service:${service.id}:save`) ? "Saving…" : "Save service"}</button>
+                    <button type="button" className="secondary-button" disabled={isServiceBusy(service.id)} onClick={() => toggleService(service)}>{isDirectoryActionBusy(`service:${service.id}:status`) ? "Updating…" : service.is_active ? "Deactivate" : "Activate"}</button>
+                    {isPlatformAdmin && <button type="button" className="danger-button" disabled={isServiceBusy(service.id)} onClick={() => deleteService(service)}>{isDirectoryActionBusy(`service:${service.id}:delete`) ? "Deleting…" : "Delete service"}</button>}
                   </div>
                 </form>
               </article>)}
@@ -486,7 +524,7 @@ export default function AdminPage() {
             {selectedFacility.is_active && <form className="admin-form admin-add-service" onSubmit={(event) => submitService(event)}>
               <h3>Add a service</h3>
               <ServiceFields />
-              <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Add service"}</button>
+              <button className="primary-link" disabled={busyDirectoryActions.has(`service:create:${selectedFacility.id}`)}>{busyDirectoryActions.has(`service:create:${selectedFacility.id}`) ? "Saving…" : "Add service"}</button>
             </form>}
           </>}
         </section>
@@ -496,7 +534,7 @@ export default function AdminPage() {
           <div className="admin-item-list">
             {facilities.map((facility) => <article className="admin-item admin-facility-row" key={facility.id}>
               <div><h3>{facility.name}</h3><p>{facility.city} · {facility.facility_type}</p><span className={facility.is_active ? "admin-status active" : "admin-status"}>{facility.is_active ? "Listed publicly" : "Not listed"}</span></div>
-              <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => editFacility(facility)}>Edit</button><button type="button" className="secondary-button" disabled={saving} onClick={() => toggleFacility(facility)}>{facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={saving} onClick={() => deleteFacility(facility)}>Delete</button></div>
+              <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => editFacility(facility)}>Edit</button><button type="button" className="secondary-button" disabled={isFacilityBusy(facility.id)} onClick={() => toggleFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:status`) ? "Updating…" : facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={isFacilityBusy(facility.id)} onClick={() => deleteFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:delete`) ? "Deleting…" : "Delete"}</button></div>
             </article>)}
           </div>
         </section>}
@@ -551,7 +589,7 @@ export default function AdminPage() {
               <label>Assigned facility<select name="facility_id" defaultValue={account.facility_id ?? ""} disabled={!account.email_verified}>
                 <option value="">Choose facility</option>{facilities.filter((facility) => facility.is_active).map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}
               </select></label>
-              <div className="admin-actions"><button className="primary-link" disabled={savingAccountId !== null || !account.email_verified}>{savingAccountId === account.id ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={savingAccountId !== null} onClick={() => toggleAccount(account)}>{savingAccountId === account.id ? "Saving…" : account.is_active ? "Deactivate account" : "Activate account"}</button></div>
+              <div className="admin-actions"><button className="primary-link" disabled={savingAccountAction?.accountId === account.id || !account.email_verified}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "save" ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={savingAccountAction?.accountId === account.id} onClick={() => toggleAccount(account)}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "toggle" ? account.is_active ? "Deactivating…" : "Activating…" : account.is_active ? "Deactivate account" : "Activate account"}</button></div>
             </form>}
           </article>)}
         </div>

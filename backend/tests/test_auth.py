@@ -204,6 +204,7 @@ def test_email_delivery_failure_allows_immediate_retry(monkeypatch):
                 },
             )
             assert response.status_code == 503
+            assert "No account was created" in response.json()["detail"]
             with SessionLocal() as db:
                 user = db.query(User).filter(User.email == email).first()
                 assert user is None

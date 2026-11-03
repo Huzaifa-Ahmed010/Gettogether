@@ -72,7 +72,11 @@ def issue_email_code(user: User, db: Session) -> None:
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="We couldn't send the verification email. Please try again shortly.",
+            detail=(
+                "Email delivery is unavailable. The site administrator must check the email "
+                "service settings before account creation can continue. No account was created; "
+                "please try again after this is fixed."
+            ),
         ) from error
 
 
