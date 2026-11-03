@@ -112,10 +112,9 @@ export type AccountSession = {
 export type RegistrationPending = {
   message: string;
   email: string;
-  development_otp?: string | null;
 };
 
-export function registerAccount(payload: { name: string; email: string; password: string }) {
+export function registerAccount(payload: { name: string; email: string; phone?: string; password: string }) {
   return request<RegistrationPending>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -137,14 +136,14 @@ export function verifyEmailAddress(payload: { email: string; code: string }) {
 }
 
 export function resendEmailVerification(email: string) {
-  return request<{ message: string; development_otp?: string | null }>("/auth/resend-verification", {
+  return request<{ message: string }>("/auth/resend-verification", {
     method: "POST",
     body: JSON.stringify({ email }),
   });
 }
 
 export function requestPasswordReset(email: string) {
-  return request<{ message: string; development_otp?: string | null }>("/auth/request-password-reset", {
+  return request<{ message: string }>("/auth/request-password-reset", {
     method: "POST",
     body: JSON.stringify({ email }),
   });
@@ -347,8 +346,20 @@ export function updateManagedUser(
   });
 }
 
+export type AssistantMatch = {
+  service_id: number;
+  service_name: string;
+  category: string;
+  provider_name: string;
+  fee_paise: number;
+  facility_id: number;
+  facility_name: string;
+  facility_city: string;
+  facility_address: string;
+};
+
 export function sendAssistantMessage(message: string) {
-  return request<{ reply: string }>("/assistant/chat", {
+  return request<{ reply: string; matches: AssistantMatch[] }>("/assistant/chat", {
     method: "POST",
     body: JSON.stringify({ message }),
   });

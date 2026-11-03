@@ -19,7 +19,10 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     message = payload.message.strip()
     normalized = message.casefold()
     if not message:
-        return {"reply": "Tell me which type of care or service you are looking for."}
+        return {
+            "reply": "Tell me which type of care or service you are looking for.",
+            "matches": [],
+        }
 
     if any(term in normalized for term in ("emergency", "urgent", "chest pain", "can't breathe", "cannot breathe")):
         return {
@@ -27,7 +30,8 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
                 "If someone may be experiencing a medical emergency, contact your local emergency "
                 "services or go to the nearest emergency department now. I can help with non-emergency "
                 "service navigation."
-            )
+            ),
+            "matches": [],
         }
 
     words = [
@@ -69,17 +73,28 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
                 "I can help you find doctors, hospitals, and diagnostic services listed on GetTogether. "
                 "Try a specialty, test, provider, or city. I can't diagnose conditions or recommend treatment. "
                 "For urgent symptoms, contact local emergency services."
-            )
+            ),
+            "matches": [],
         }
 
-    results = [
-        f"- {service.name} ({service.category}) at {facility.name}, {facility.city}"
-        for service, facility in services
-    ]
     return {
         "reply": (
-            "Here are matching services from the GetTogether directory:\n"
-            + "\n".join(results)
-            + "\n\nPlease contact the provider to confirm availability. This assistant can't diagnose or recommend treatment."
-        )
+            "Here are matching services from the GetTogether directory. "
+            "Please contact the provider to confirm availability. "
+            "This assistant can't diagnose or recommend treatment."
+        ),
+        "matches": [
+            {
+                "service_id": service.id,
+                "service_name": service.name,
+                "category": service.category,
+                "provider_name": service.provider_name,
+                "fee_paise": service.fee_paise,
+                "facility_id": facility.id,
+                "facility_name": facility.name,
+                "facility_city": facility.city,
+                "facility_address": facility.address,
+            }
+            for service, facility in services
+        ],
     }

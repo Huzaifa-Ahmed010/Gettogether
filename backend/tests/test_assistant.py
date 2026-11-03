@@ -43,7 +43,10 @@ def test_assistant_uses_directory_without_external_model(platform_admin_headers)
                 json={"message": f"Where can I find the Navigator Blood Test in NavigatorCity{suffix}?"},
             )
             assert response.status_code == 200
-            assert f"Navigator Center {suffix}" in response.json()["reply"]
+            result = response.json()
+            assert f"Navigator Center {suffix}" == result["matches"][0]["facility_name"]
+            assert f"Navigator Blood Test {suffix}" == result["matches"][0]["service_name"]
+            assert result["matches"][0]["facility_id"] == facility_id
             assert "can't diagnose" in response.json()["reply"]
         finally:
             if facility_id is not None:
@@ -63,6 +66,7 @@ def test_assistant_handles_emergency_without_diagnosing():
         )
     assert response.status_code == 200
     assert "emergency services" in response.json()["reply"]
+    assert response.json()["matches"] == []
 
 
 def test_assistant_has_safe_navigation_fallback_for_unknown_services():
@@ -73,3 +77,4 @@ def test_assistant_has_safe_navigation_fallback_for_unknown_services():
         )
     assert response.status_code == 200
     assert "can't diagnose" in response.json()["reply"]
+    assert response.json()["matches"] == []

@@ -25,7 +25,6 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_use_starttls: bool = True
     smtp_use_ssl: bool = False
-    development_show_email_otp: bool = True
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
@@ -65,8 +64,6 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires a TLS-protected REDIS_URL (rediss://)")
             if not self.smtp_host or not self.smtp_from_email:
                 raise ValueError("Production requires SMTP_HOST and SMTP_FROM_EMAIL for account verification")
-            if self.development_show_email_otp:
-                raise ValueError("DEVELOPMENT_SHOW_EMAIL_OTP must be disabled in production")
             if self.smtp_use_ssl and self.smtp_use_starttls:
                 raise ValueError("SMTP_USE_SSL and SMTP_USE_STARTTLS cannot both be enabled")
             if not self.smtp_use_ssl and not self.smtp_use_starttls:

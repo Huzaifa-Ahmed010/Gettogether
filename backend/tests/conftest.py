@@ -29,7 +29,24 @@ def strong_test_secret(monkeypatch):
     monkeypatch.setattr(settings, "environment", "development")
     monkeypatch.setattr(settings, "smtp_host", "")
     monkeypatch.setattr(settings, "smtp_from_email", "")
-    monkeypatch.setattr(settings, "development_show_email_otp", True)
+
+
+@pytest.fixture
+def otp_delivery(monkeypatch):
+    import app.api.routes.auth as auth_routes
+
+    delivered = {"verification": {}, "password_reset": {}}
+    monkeypatch.setattr(
+        auth_routes,
+        "send_verification_code",
+        lambda recipient, code: delivered["verification"].__setitem__(recipient, code),
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "send_password_reset_code",
+        lambda recipient, code: delivered["password_reset"].__setitem__(recipient, code),
+    )
+    return delivered
 
 
 @pytest.fixture

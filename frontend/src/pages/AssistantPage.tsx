@@ -1,11 +1,13 @@
 import { type FormEvent, useState } from "react";
 import { ArrowRight, HeartPulse } from "lucide-react";
-import { sendAssistantMessage } from "../api/client";
+import { Link } from "react-router-dom";
+import { sendAssistantMessage, type AssistantMatch } from "../api/client";
 import SiteLayout from "../components/SiteLayout";
 
 export default function AssistantPage() {
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState("");
+  const [matches, setMatches] = useState<AssistantMatch[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -15,10 +17,12 @@ export default function AssistantPage() {
     if (!trimmedMessage || loading) return;
     setError("");
     setReply("");
+    setMatches([]);
     setLoading(true);
     try {
       const response = await sendAssistantMessage(trimmedMessage);
       setReply(response.reply);
+      setMatches(response.matches);
       setMessage("");
     } catch {
       setError("The assistant is unavailable right now. Please try again later.");
@@ -37,7 +41,21 @@ export default function AssistantPage() {
         <button className="assistant-action" disabled={loading || !message.trim()}>{loading ? "Sending…" : "Send message"} <ArrowRight size={17} /></button>
       </form>
       {error && <p className="notice" role="alert">{error}</p>}
-      {reply && <section className="assistant-reply" aria-live="polite"><h2>Assistant reply</h2><p>{reply}</p></section>}
+      {reply && <section className="assistant-reply" aria-live="polite">
+        <h2>Assistant reply</h2>
+        <p>{reply}</p>
+        {matches.length > 0 && <div className="assistant-match-grid">
+          {matches.map((match) => <Link className="assistant-match-card" to={`/facilities/${match.facility_id}`} key={`${match.service_id}-${match.facility_id}`}>
+            <span className="assistant-match-category">{match.category}</span>
+            <strong>{match.service_name}</strong>
+            {match.provider_name && <span>{match.provider_name}</span>}
+            <span className="assistant-match-facility">{match.facility_name}</span>
+            <span>{match.facility_address}, {match.facility_city}</span>
+            <b>₹{(match.fee_paise / 100).toFixed(2)}</b>
+            <span className="assistant-match-link">View facility and service <ArrowRight size={15} /></span>
+          </Link>)}
+        </div>}
+      </section>}
     </main>
   </SiteLayout>;
 }

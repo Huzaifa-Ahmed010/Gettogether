@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 class RegisterRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: EmailStr = Field(max_length=254)
+    phone: str | None = Field(default=None, max_length=24)
     password: str = Field(min_length=12, max_length=128)
 
     @field_validator("name")
@@ -15,6 +17,22 @@ class RegisterRequest(BaseModel):
         if len(name) < 2:
             raise ValueError("Name must contain at least two non-space characters")
         return name
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Enter a valid phone number in international format")
+        if not value.strip():
+            return None
+        phone = re.sub(r"[\s().-]", "", value)
+        if re.fullmatch(r"[6-9]\d{9}", phone):
+            phone = f"+91{phone}"
+        if not re.fullmatch(r"\+[1-9]\d{7,14}", phone):
+            raise ValueError("Enter a valid phone number in international format")
+        return phone
 
     @field_validator("password")
     @classmethod
@@ -48,7 +66,6 @@ class TokenResponse(BaseModel):
 class VerificationPendingResponse(BaseModel):
     message: str
     email: EmailStr
-    development_otp: str | None = None
 
 
 class EmailCodeRequest(BaseModel):
@@ -62,7 +79,6 @@ class ResendVerificationRequest(BaseModel):
 
 class ResendVerificationResponse(BaseModel):
     message: str
-    development_otp: str | None = None
 
 
 class PasswordResetRequest(BaseModel):
@@ -84,7 +100,6 @@ class PasswordResetCompleteRequest(BaseModel):
 
 class PasswordResetResponse(BaseModel):
     message: str
-    development_otp: str | None = None
 
 
 class MessageResponse(BaseModel):

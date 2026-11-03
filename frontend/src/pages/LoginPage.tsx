@@ -10,9 +10,9 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register" | "verify">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [developmentOtp, setDevelopmentOtp] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,9 +23,13 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (mode === "register") {
-        const pending = await registerAccount({ name, email, password });
+        const pending = await registerAccount({
+          name,
+          email,
+          phone: phone || undefined,
+          password,
+        });
         setEmail(pending.email);
-        setDevelopmentOtp(pending.development_otp ?? "");
         setNotice(pending.message);
         setMode("verify");
         return;
@@ -53,7 +57,6 @@ export default function LoginPage() {
     try {
       const response = await resendEmailVerification(email);
       setNotice(response.message);
-      setDevelopmentOtp(response.development_otp ?? "");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message.replace(/^API error \d+: /, "") : "Unable to resend the verification email.");
     } finally {
@@ -83,9 +86,10 @@ export default function LoginPage() {
       </div>}
       <form className="account-form" onSubmit={submit}>
         {mode === "register" && <label>Full name<input autoComplete="name" required minLength={2} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></label>}
+        {mode === "register" && <label>Mobile number (optional)<input type="tel" autoComplete="tel" maxLength={24} placeholder="+91 98765 43210" value={phone} onChange={(event) => setPhone(event.target.value)} /><small>Email is required for verification and account recovery. Mobile verification is not enabled yet.</small></label>}
         <label>Email address<input type="email" autoComplete="email" required maxLength={254} readOnly={mode === "verify"} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
         {mode === "verify" ? <label>6-digit email code<input inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" minLength={6} maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label> : <label>Password<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "register" ? 12 : 1} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />{mode === "register" && <small>Use at least 12 characters.</small>}</label>}
-        {notice && <p className="account-notice" role="status">{notice}{developmentOtp && <strong> Local development verification code: {developmentOtp}</strong>}</p>}
+        {notice && <p className="account-notice" role="status">{notice}</p>}
         {error && <p className="account-error" role="alert">{error}</p>}
         <button className="primary-link" disabled={loading}>{loading ? "Please wait…" : mode === "login" ? "Sign in" : mode === "register" ? "Create account" : "Verify email"}</button>
       </form>

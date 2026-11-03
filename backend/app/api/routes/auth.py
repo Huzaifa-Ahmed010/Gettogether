@@ -51,7 +51,7 @@ def normalize_datetime(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-def issue_email_code(user: User, db: Session) -> str:
+def issue_email_code(user: User, db: Session) -> None:
     now = utc_now()
     code = f"{secrets.randbelow(1_000_000):06d}"
     verification = db.query(EmailVerification).filter(EmailVerification.user_id == user.id).first()
@@ -73,16 +73,9 @@ def issue_email_code(user: User, db: Session) -> str:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="We couldn't send the verification email. Please try again shortly.",
         ) from error
-    if (
-        settings.environment.lower() != "production"
-        and settings.development_show_email_otp
-        and not settings.smtp_host
-    ):
-        return code
-    return ""
 
 
-def issue_password_reset_code(user: User, db: Session) -> str:
+def issue_password_reset_code(user: User, db: Session) -> None:
     now = utc_now()
     code = f"{secrets.randbelow(1_000_000):06d}"
     reset = db.query(PasswordReset).filter(PasswordReset.user_id == user.id).first()
@@ -106,14 +99,6 @@ def issue_password_reset_code(user: User, db: Session) -> str:
         logger.exception("Password reset email delivery failed")
         db.delete(reset)
         db.commit()
-        return ""
-    if (
-        settings.environment.lower() != "production"
-        and settings.development_show_email_otp
-        and not settings.smtp_host
-    ):
-        return code
-    return ""
 
 
 def create_access_token(user: User) -> str:
@@ -181,7 +166,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User.id).filter(User.email == email).first():
         raise HTTPException(status_code=409, detail="An account with this email already exists")
 
-    user = User(name=payload.name.strip(), email=email, password_hash=password_hash.hash(payload.password))
+    user = User(
+        name=payload.name.strip(),
+        email=email,
+        phone=payload.phone,
+        password_hash=password_hash.hash(payload.password),
+    )
     db.add(user)
     try:
         db.commit()
@@ -190,11 +180,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="An account with this email already exists")
     db.refresh(user)
     record_audit_event(db, user, "account.registered", "user", user.id)
-    development_otp = issue_email_code(user, db)
+    issue_email_code(user, db)
     return VerificationPendingResponse(
         message="Enter the verification code sent to your email address.",
         email=email,
-        development_otp=development_otp or None,
     )
 
 
@@ -256,11 +245,8 @@ def resend_verification(payload: ResendVerificationRequest, db: Session = Depend
                 status_code=429,
                 detail=f"Please wait {settings.email_otp_resend_seconds - int(elapsed)} seconds before requesting another code.",
             )
-    development_otp = issue_email_code(user, db)
-    return ResendVerificationResponse(
-        message=generic_message,
-        development_otp=development_otp or None,
-    )
+    issue_email_code(user, db)
+    return ResendVerificationResponse(message=generic_message)
 
 
 @router.post("/request-password-reset", response_model=PasswordResetResponse, status_code=202)
@@ -281,11 +267,8 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
         if elapsed < settings.email_otp_resend_seconds:
             return PasswordResetResponse(message=generic_message)
 
-    development_otp = issue_password_reset_code(user, db)
-    return PasswordResetResponse(
-        message=generic_message,
-        development_otp=development_otp or None,
-    )
+    issue_password_reset_code(user, db)
+    return PasswordResetResponse(message=generic_message)
 
 
 @router.post("/reset-password", response_model=MessageResponse)

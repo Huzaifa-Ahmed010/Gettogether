@@ -56,7 +56,7 @@ def get_dashboard(db: Session = Depends(get_db), user: User = Depends(get_curren
         bookings_query = bookings_query.filter(Booking.facility_id == user.facility_id)
         users_count = None
     else:
-        users_count = db.query(User.id).count()
+        users_count = db.query(User.id).filter(User.email_verified.is_(True)).count()
     return AdminDashboardRead(
         facilities=facilities_query.filter(Facility.is_active.is_(True)).count(),
         services=services_query.filter(
@@ -236,6 +236,7 @@ def list_managed_users(
 ):
     require_platform_admin(user)
     query = db.query(User, Facility.name).outerjoin(Facility, User.facility_id == Facility.id)
+    query = query.filter(User.email_verified.is_(True))
     if not include_inactive:
         query = query.filter(User.is_active.is_(True))
     rows = query.order_by(User.created_at.desc(), User.id.desc()).all()
@@ -256,7 +257,11 @@ def update_managed_user(
     user: User = Depends(get_current_user),
 ):
     require_platform_admin(user)
-    account = db.get(User, user_id)
+    account = (
+        db.query(User)
+        .filter(User.id == user_id, User.email_verified.is_(True))
+        .first()
+    )
     if account is None:
         raise HTTPException(404, "Account not found")
     if account.role == "platform_admin":

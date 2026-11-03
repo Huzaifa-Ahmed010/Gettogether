@@ -28,9 +28,10 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
         inspector.get_table_names()
     )
     assert "token_version" in {column["name"] for column in inspector.get_columns("users")}
+    assert "phone" in {column["name"] for column in inspector.get_columns("users")}
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0002_password_reset_and_audit"
+            "0003_optional_user_phone"
         )
     engine.dispose()
 
@@ -104,12 +105,12 @@ def test_migrations_adopt_legacy_schema_without_dropping_users(tmp_path, monkeyp
     engine = create_engine(database_url)
     inspector = inspect(engine)
     user_columns = {column["name"] for column in inspector.get_columns("users")}
-    assert {"role", "email_verified", "facility_id", "token_version"} <= user_columns
+    assert {"role", "email_verified", "facility_id", "token_version", "phone"} <= user_columns
     with engine.connect() as migrated:
         user = migrated.execute(
-            text("SELECT id, email, role, email_verified, token_version FROM users WHERE id = 7")
+            text("SELECT id, email, role, email_verified, token_version, phone FROM users WHERE id = 7")
         ).one()
-        assert user == (7, "legacy@example.com", "patient", False, 0)
+        assert user == (7, "legacy@example.com", "patient", False, 0, None)
         booking_code = migrated.execute(
             text("SELECT verification_code FROM bookings WHERE id = 9")
         ).scalar_one()

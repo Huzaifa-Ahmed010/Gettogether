@@ -34,8 +34,6 @@ def send_email_code(
     expiry_minutes: int,
 ) -> None:
     if not settings.smtp_host or not settings.smtp_from_email:
-        if settings.environment.lower() != "production" and settings.development_show_email_otp:
-            return
         raise RuntimeError("Email delivery is not configured")
 
     message = EmailMessage()

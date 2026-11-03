@@ -7,7 +7,6 @@ export default function PasswordResetPage() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
-  const [developmentOtp, setDevelopmentOtp] = useState("");
   const [stage, setStage] = useState<"request" | "reset" | "complete">("request");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +20,6 @@ export default function PasswordResetPage() {
       if (stage === "request") {
         const result = await requestPasswordReset(email);
         setNotice(result.message);
-        setDevelopmentOtp(result.development_otp ?? "");
         setStage("reset");
       } else {
         const result = await completePasswordReset({
@@ -30,7 +28,6 @@ export default function PasswordResetPage() {
           new_password: password,
         });
         setNotice(result.message);
-        setDevelopmentOtp("");
         setStage("complete");
       }
     } catch (reason) {
@@ -48,7 +45,6 @@ export default function PasswordResetPage() {
     try {
       const result = await requestPasswordReset(email);
       setNotice(result.message);
-      setDevelopmentOtp(result.development_otp ?? "");
     } catch (reason) {
       setError(reason instanceof Error
         ? reason.message.replace(/^API error \d+: /, "")
@@ -73,7 +69,7 @@ export default function PasswordResetPage() {
             <label>6-digit reset code<input inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" minLength={6} maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
             <label>New password<input type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} /><small>Use at least 12 characters.</small></label>
           </>}
-          {notice && <p className="account-notice" role="status">{notice}{developmentOtp && <strong> Local development reset code: {developmentOtp}</strong>}</p>}
+          {notice && <p className="account-notice" role="status">{notice}</p>}
           {error && <p className="account-error" role="alert">{error}</p>}
           <button className="primary-link" disabled={loading}>{loading ? "Please wait…" : stage === "request" ? "Send reset code" : "Update password"}</button>
         </form>

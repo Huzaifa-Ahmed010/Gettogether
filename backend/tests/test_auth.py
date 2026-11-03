@@ -8,7 +8,7 @@ from app.main import app
 from app.models import AuditEvent, EmailVerification, PasswordReset, User
 
 
-def test_register_login_and_protected_profile():
+def test_register_login_and_protected_profile(otp_delivery):
     email = f"user-{uuid4().hex}@example.com"
     password = "correct horse battery staple"
     user_id = None
@@ -17,16 +17,22 @@ def test_register_login_and_protected_profile():
         try:
             registration = client.post(
                 "/api/v1/auth/register",
-                json={"name": "Test Patient", "email": email.upper(), "password": password},
+                json={
+                    "name": "Test Patient",
+                    "email": email.upper(),
+                    "phone": "98765 43210",
+                    "password": password,
+                },
             )
             assert registration.status_code == 202
             pending = registration.json()
             with SessionLocal() as db:
                 pending_user = db.query(User).filter(User.email == email).first()
                 assert pending_user is not None
+                assert pending_user.phone == "+919876543210"
                 user_id = pending_user.id
             assert pending["email"] == email
-            assert pending["development_otp"]
+            assert "development_otp" not in pending
 
             assert client.post(
                 "/api/v1/auth/login",
@@ -40,7 +46,7 @@ def test_register_login_and_protected_profile():
             assert verified.status_code == 422
             verified = client.post(
                 "/api/v1/auth/verify-email",
-                json={"email": email, "code": pending["development_otp"]},
+                json={"email": email, "code": otp_delivery["verification"][email]},
             )
             assert verified.status_code == 200
             account = verified.json()
@@ -81,6 +87,15 @@ def test_register_login_and_protected_profile():
                 "/api/v1/auth/register",
                 json={"name": "  ", "email": f"name-{email}", "password": password},
             ).status_code == 422
+            assert client.post(
+                "/api/v1/auth/register",
+                json={
+                    "name": "Invalid Phone",
+                    "email": f"phone-{email}",
+                    "phone": "123",
+                    "password": password,
+                },
+            ).status_code == 422
         finally:
             if user_id is not None:
                 with SessionLocal() as db:
@@ -99,7 +114,7 @@ def test_register_login_and_protected_profile():
                         db.commit()
 
 
-def test_email_verification_resend_cooldown_and_invalid_attempts():
+def test_email_verification_resend_cooldown_and_invalid_attempts(otp_delivery):
     email = f"verify-{uuid4().hex}@example.com"
     password = "correct horse battery staple"
     user_id = None
@@ -131,12 +146,13 @@ def test_email_verification_resend_cooldown_and_invalid_attempts():
                 json={"email": email},
             )
             assert resend.status_code == 200
-            assert resend.json()["development_otp"]
+            assert "development_otp" not in resend.json()
+            resent_code = otp_delivery["verification"][email]
 
             for _ in range(5):
                 invalid = client.post(
                     "/api/v1/auth/verify-email",
-                    json={"email": email, "code": "000000" if resend.json()["development_otp"] != "000000" else "000001"},
+                    json={"email": email, "code": "000000" if resent_code != "000000" else "000001"},
                 )
             assert invalid.status_code == 429
             with SessionLocal() as db:
@@ -207,7 +223,7 @@ def test_email_delivery_failure_allows_immediate_retry(monkeypatch):
                         db.commit()
 
 
-def test_password_reset_revokes_existing_access_tokens():
+def test_password_reset_revokes_existing_access_tokens(otp_delivery):
     email = f"reset-{uuid4().hex}@example.com"
     old_password = "correct horse battery staple"
     new_password = "a different secure password"
@@ -220,9 +236,10 @@ def test_password_reset_revokes_existing_access_tokens():
                 json={"name": "Reset User", "email": email, "password": old_password},
             )
             assert registration.status_code == 202
+            assert "development_otp" not in registration.json()
             verified = client.post(
                 "/api/v1/auth/verify-email",
-                json={"email": email, "code": registration.json()["development_otp"]},
+                json={"email": email, "code": otp_delivery["verification"][email]},
             )
             assert verified.status_code == 200
             old_token = verified.json()["access_token"]
@@ -236,11 +253,12 @@ def test_password_reset_revokes_existing_access_tokens():
                 json={"email": email},
             )
             assert requested.status_code == 202
+            assert "development_otp" not in requested.json()
             reset = client.post(
                 "/api/v1/auth/reset-password",
                 json={
                     "email": email,
-                    "code": requested.json()["development_otp"],
+                    "code": otp_delivery["password_reset"][email],
                     "new_password": new_password,
                 },
             )
@@ -289,7 +307,6 @@ def test_production_settings_reject_insecure_origins_and_database():
         "redis_url": "rediss://cache.example:6379/0",
         "smtp_host": "smtp.example",
         "smtp_from_email": "accounts@example.com",
-        "development_show_email_otp": False,
     }
     assert Settings(**secure_settings).environment == "production"
 
@@ -311,7 +328,6 @@ def test_production_settings_reject_insecure_origins_and_database():
         {"redis_url": "redis://cache.example:6379/0"},
         {"database_url": "postgresql+psycopg://user:password@db:5432/gettogether"},
         {"smtp_host": ""},
-        {"development_show_email_otp": True},
         {"smtp_use_starttls": False},
     ):
         with pytest.raises(ValidationError):
