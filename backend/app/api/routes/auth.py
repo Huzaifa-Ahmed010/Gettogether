@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.audit import record_audit_event
 from app.core.email import send_password_reset_code, send_verification_code
 from app.db.session import get_db
-from app.models import EmailVerification, PasswordReset, User
+from app.models import AuditEvent, EmailVerification, PasswordReset, User
 from app.schemas.auth import (
     EmailCodeRequest,
     LoginRequest,
@@ -67,6 +67,7 @@ def issue_email_code(user: User, db: Session) -> None:
     try:
         send_verification_code(user.email, code)
     except (OSError, smtplib.SMTPException, RuntimeError) as error:
+        logger.exception("Email verification delivery failed")
         db.delete(verification)
         db.commit()
         raise HTTPException(
@@ -180,7 +181,17 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="An account with this email already exists")
     db.refresh(user)
     record_audit_event(db, user, "account.registered", "user", user.id)
-    issue_email_code(user, db)
+    try:
+        issue_email_code(user, db)
+    except HTTPException as error:
+        if error.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+            db.query(AuditEvent).filter(
+                AuditEvent.actor_user_id == user.id,
+                AuditEvent.action == "account.registered",
+            ).delete(synchronize_session=False)
+            db.delete(user)
+            db.commit()
+        raise
     return VerificationPendingResponse(
         message="Enter the verification code sent to your email address.",
         email=email,

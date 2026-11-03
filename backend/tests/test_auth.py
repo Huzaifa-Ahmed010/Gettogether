@@ -206,11 +206,16 @@ def test_email_delivery_failure_allows_immediate_retry(monkeypatch):
             assert response.status_code == 503
             with SessionLocal() as db:
                 user = db.query(User).filter(User.email == email).first()
-                assert user is not None
-                user_id = user.id
-                assert db.query(EmailVerification).filter(
-                    EmailVerification.user_id == user.id
-                ).first() is None
+                assert user is None
+            retry = client.post(
+                "/api/v1/auth/register",
+                json={
+                    "name": "Delivery Test",
+                    "email": email,
+                    "password": "correct horse battery staple",
+                },
+            )
+            assert retry.status_code == 503
         finally:
             if user_id is not None:
                 with SessionLocal() as db:

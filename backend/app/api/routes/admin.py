@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_current_user
@@ -103,6 +104,44 @@ def update_facility(
     return facility
 
 
+@router.delete("/facilities/{facility_id}")
+def delete_facility(
+    facility_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_platform_admin(user)
+    facility = db.query(Facility).filter(Facility.id == facility_id).with_for_update().first()
+    if facility is None:
+        raise HTTPException(404, "Facility not found")
+    if db.query(Booking.id).filter(Booking.facility_id == facility_id).first():
+        raise HTTPException(
+            409,
+            "This facility has bookings and cannot be deleted. Deactivate it to keep its booking history.",
+        )
+    if db.query(User.id).filter(User.facility_id == facility_id).first():
+        raise HTTPException(
+            409,
+            "Staff are assigned to this facility. Reassign them before deleting it.",
+        )
+
+    services = db.query(Service).filter(Service.facility_id == facility_id).all()
+    try:
+        for service in services:
+            record_audit_event(db, user, "service.deleted", "service", service.id)
+            db.delete(service)
+        record_audit_event(db, user, "facility.deleted", "facility", facility.id)
+        db.delete(facility)
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            409,
+            "This facility is linked to existing records and cannot be deleted. Deactivate it instead.",
+        ) from error
+    return {"message": "Facility deleted."}
+
+
 @router.get("/facilities/{facility_id}/services", response_model=list[ServiceRead])
 def list_managed_services(
     facility_id: int,
@@ -145,6 +184,40 @@ def update_service(
     db.commit()
     db.refresh(service)
     return service
+
+
+@router.delete("/facilities/{facility_id}/services/{service_id}")
+def delete_service(
+    facility_id: int,
+    service_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_platform_admin(user)
+    service = (
+        db.query(Service)
+        .filter(Service.id == service_id, Service.facility_id == facility_id)
+        .with_for_update()
+        .first()
+    )
+    if service is None:
+        raise HTTPException(404, "Service not found")
+    if db.query(Booking.id).filter(Booking.service_id == service_id).first():
+        raise HTTPException(
+            409,
+            "This service has bookings and cannot be deleted. Deactivate it to keep its booking history.",
+        )
+    record_audit_event(db, user, "service.deleted", "service", service.id)
+    db.delete(service)
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            409,
+            "This service is linked to existing records and cannot be deleted. Deactivate it instead.",
+        ) from error
+    return {"message": "Service deleted."}
 
 
 @router.get("/bookings", response_model=list[AdminBookingRead])

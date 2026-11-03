@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
@@ -6,6 +6,8 @@ import {
   cancelManagedBooking,
   createFacility,
   createFacilityService,
+  deleteManagedFacility,
+  deleteManagedService,
   getAdminDashboard,
   getManagedBookings,
   getManagedFacilities,
@@ -25,7 +27,9 @@ import {
 type AdminTab = "directory" | "bookings" | "accounts";
 
 function errorText(error: unknown) {
-  return error instanceof Error ? error.message : "The request could not be completed.";
+  return error instanceof Error
+    ? error.message.replace(/^API error \d+: /, "")
+    : "The request could not be completed.";
 }
 
 function formatAppointment(value: string) {
@@ -48,8 +52,10 @@ export default function AdminPage() {
   const [codes, setCodes] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingAccountId, setSavingAccountId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const facilityFormRef = useRef<HTMLFormElement>(null);
 
   const selectedFacility = facilities.find((facility) => facility.id === selectedFacilityId) ?? null;
 
@@ -260,6 +266,22 @@ export default function AdminPage() {
     }
   }
 
+  async function deleteFacility(facility: Facility) {
+    if (!window.confirm(`Permanently delete ${facility.name}? This cannot be undone.`)) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await deleteManagedFacility(facility.id);
+      setNotice(result.message);
+      await loadDirectory();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function toggleService(service: ManagedService) {
     if (!selectedFacility) return;
     setSaving(true);
@@ -275,6 +297,32 @@ export default function AdminPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function deleteService(service: ManagedService) {
+    if (!selectedFacility) return;
+    if (!window.confirm(`Permanently delete ${service.name}? This cannot be undone.`)) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await deleteManagedService(selectedFacility.id, service.id);
+      setNotice(result.message);
+      setServices(await getManagedServices(selectedFacility.id));
+      await loadDashboard();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editFacility(facility: Facility) {
+    setSelectedFacilityId(facility.id);
+    setNotice(`Editing ${facility.name}.`);
+    window.requestAnimationFrame(() => {
+      facilityFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }
 
   async function cancelBooking(booking: AdminBooking) {
@@ -330,7 +378,7 @@ export default function AdminPage() {
       }
       payload.facility_id = facilityId;
     }
-    setSaving(true);
+    setSavingAccountId(account.id);
     setError("");
     setNotice("");
     try {
@@ -341,14 +389,14 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setSavingAccountId(null);
     }
   }
 
   async function toggleAccount(account: AdminUser) {
     const action = account.is_active ? "deactivate" : "activate";
     if (!window.confirm(`${action[0].toUpperCase()}${action.slice(1)} ${account.name}'s account?`)) return;
-    setSaving(true);
+    setSavingAccountId(account.id);
     setError("");
     setNotice("");
     try {
@@ -359,7 +407,7 @@ export default function AdminPage() {
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setSaving(false);
+      setSavingAccountId(null);
     }
   }
 
@@ -409,11 +457,14 @@ export default function AdminPage() {
           </div>
           {!selectedFacility && <p className="admin-empty">No facility is available to manage yet.</p>}
           {selectedFacility && <>
-            <form key={selectedFacility.id} className="admin-form admin-form-inline" onSubmit={submitFacilityUpdate}>
+            <form ref={facilityFormRef} key={selectedFacility.id} className="admin-form admin-form-inline" onSubmit={submitFacilityUpdate}>
               <h3>Facility details</h3>
               <FacilityFields facility={selectedFacility} />
               {isPlatformAdmin && <label className="admin-checkbox"><input type="checkbox" name="is_active" defaultChecked={selectedFacility.is_active} /> Listed publicly</label>}
-              <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Save facility"}</button>
+              <div className="admin-actions">
+                <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Save facility"}</button>
+                {isPlatformAdmin && <button type="button" className="danger-button" disabled={saving} onClick={() => deleteFacility(selectedFacility)}>Delete facility</button>}
+              </div>
             </form>
 
             <div className="admin-list-heading"><h3>Services</h3><span>{services.length} total</span></div>
@@ -426,6 +477,7 @@ export default function AdminPage() {
                   <div className="admin-actions">
                     <button className="primary-link" disabled={saving}>{saving ? "Saving…" : "Save service"}</button>
                     <button type="button" className="secondary-button" disabled={saving} onClick={() => toggleService(service)}>{service.is_active ? "Deactivate" : "Activate"}</button>
+                    {isPlatformAdmin && <button type="button" className="danger-button" disabled={saving} onClick={() => deleteService(service)}>Delete service</button>}
                   </div>
                 </form>
               </article>)}
@@ -444,7 +496,7 @@ export default function AdminPage() {
           <div className="admin-item-list">
             {facilities.map((facility) => <article className="admin-item admin-facility-row" key={facility.id}>
               <div><h3>{facility.name}</h3><p>{facility.city} · {facility.facility_type}</p><span className={facility.is_active ? "admin-status active" : "admin-status"}>{facility.is_active ? "Listed publicly" : "Not listed"}</span></div>
-              <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => setSelectedFacilityId(facility.id)}>Edit</button><button type="button" className="secondary-button" disabled={saving} onClick={() => toggleFacility(facility)}>{facility.is_active ? "Deactivate" : "Activate"}</button></div>
+              <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => editFacility(facility)}>Edit</button><button type="button" className="secondary-button" disabled={saving} onClick={() => toggleFacility(facility)}>{facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={saving} onClick={() => deleteFacility(facility)}>Delete</button></div>
             </article>)}
           </div>
         </section>}
@@ -499,7 +551,7 @@ export default function AdminPage() {
               <label>Assigned facility<select name="facility_id" defaultValue={account.facility_id ?? ""} disabled={!account.email_verified}>
                 <option value="">Choose facility</option>{facilities.filter((facility) => facility.is_active).map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}
               </select></label>
-              <div className="admin-actions"><button className="primary-link" disabled={saving || !account.email_verified}>{saving ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={saving} onClick={() => toggleAccount(account)}>{account.is_active ? "Deactivate account" : "Activate account"}</button></div>
+              <div className="admin-actions"><button className="primary-link" disabled={savingAccountId !== null || !account.email_verified}>{savingAccountId === account.id ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={savingAccountId !== null} onClick={() => toggleAccount(account)}>{savingAccountId === account.id ? "Saving…" : account.is_active ? "Deactivate account" : "Activate account"}</button></div>
             </form>}
           </article>)}
         </div>

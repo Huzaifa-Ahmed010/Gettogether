@@ -288,6 +288,12 @@ export function updateManagedFacility(
   });
 }
 
+export function deleteManagedFacility(facilityId: number) {
+  return request<{ message: string }>(`/admin/facilities/${facilityId}`, {
+    method: "DELETE",
+  });
+}
+
 export function getManagedServices(facilityId: number) {
   return request<ManagedService[]>(`/admin/facilities/${facilityId}/services`);
 }
@@ -311,6 +317,13 @@ export function updateManagedService(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export function deleteManagedService(facilityId: number, serviceId: number) {
+  return request<{ message: string }>(
+    `/admin/facilities/${facilityId}/services/${serviceId}`,
+    { method: "DELETE" }
+  );
 }
 
 export function getManagedBookings(filters?: { status?: string; facility_id?: number }) {

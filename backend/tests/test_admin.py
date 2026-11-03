@@ -81,6 +81,21 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
             service_id = service_response.json()["id"]
             service_ids.append(service_id)
 
+            unused_service_response = client.post(
+                f"/api/v1/facilities/{facility_id}/services",
+                json={
+                    "name": f"Unused service {suffix}",
+                    "category": "Unused",
+                    "service_type": "doctor",
+                    "provider_name": "Dr Demo",
+                    "fee_paise": 0,
+                },
+                headers=platform_admin_headers,
+            )
+            assert unused_service_response.status_code == 201
+            unused_service_id = unused_service_response.json()["id"]
+            service_ids.append(unused_service_id)
+
             staff_id, _, staff_headers = create_account(
                 "facility_staff",
                 facility_id=facility_id,
@@ -118,6 +133,76 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                 json={"is_active": False},
                 headers=staff_headers,
             ).status_code == 403
+            facility_update = client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"city": "Updated Admin City"},
+                headers=platform_admin_headers,
+            )
+            assert facility_update.status_code == 200
+            assert facility_update.json()["city"] == "Updated Admin City"
+
+            assert client.delete(
+                f"/api/v1/admin/facilities/{facility_id}/services/{unused_service_id}",
+                headers=staff_headers,
+            ).status_code == 403
+            deleted_service = client.delete(
+                f"/api/v1/admin/facilities/{facility_id}/services/{unused_service_id}",
+                headers=platform_admin_headers,
+            )
+            assert deleted_service.status_code == 200
+            assert client.get(
+                f"/api/v1/admin/facilities/{facility_id}/services",
+                headers=platform_admin_headers,
+            ).json()
+            assert all(
+                service["id"] != unused_service_id
+                for service in client.get(
+                    f"/api/v1/admin/facilities/{facility_id}/services",
+                    headers=platform_admin_headers,
+                ).json()
+            )
+            assert client.delete(
+                f"/api/v1/admin/facilities/{facility_id}",
+                headers=platform_admin_headers,
+            ).status_code == 409
+
+            unused_facility = client.post(
+                "/api/v1/facilities",
+                json={**facility_payload, "name": f"Delete Center {suffix}"},
+                headers=platform_admin_headers,
+            )
+            assert unused_facility.status_code == 201
+            unused_facility_id = unused_facility.json()["id"]
+            facility_ids.append(unused_facility_id)
+            unused_facility_service = client.post(
+                f"/api/v1/facilities/{unused_facility_id}/services",
+                json={
+                    "name": f"Removable service {suffix}",
+                    "category": "Unused",
+                    "service_type": "diagnostic",
+                    "provider_name": "",
+                    "fee_paise": 0,
+                },
+                headers=platform_admin_headers,
+            )
+            assert unused_facility_service.status_code == 201
+            service_ids.append(unused_facility_service.json()["id"])
+            deleted_facility = client.delete(
+                f"/api/v1/admin/facilities/{unused_facility_id}",
+                headers=platform_admin_headers,
+            )
+            assert deleted_facility.status_code == 200
+            assert client.get(
+                f"/api/v1/admin/facilities",
+                headers=platform_admin_headers,
+            ).status_code == 200
+            assert all(
+                item["id"] != unused_facility_id
+                for item in client.get(
+                    "/api/v1/admin/facilities",
+                    headers=platform_admin_headers,
+                ).json()
+            )
 
             deactivated = client.patch(
                 f"/api/v1/admin/facilities/{facility_id}/services/{service_id}",
@@ -212,6 +297,14 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
             )
             assert booking_response.status_code == 201
             booking_id = booking_response.json()["id"]
+            assert client.delete(
+                f"/api/v1/admin/facilities/{facility_id}/services/{service_id}",
+                headers=platform_admin_headers,
+            ).status_code == 409
+            assert client.delete(
+                f"/api/v1/admin/facilities/{facility_id}",
+                headers=platform_admin_headers,
+            ).status_code == 409
 
             admin_bookings = client.get(
                 "/api/v1/admin/bookings",
@@ -283,6 +376,13 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
                 json={"role": "patient"},
                 headers=staff_headers,
             ).status_code == 403
+            deactivated_staff = client.patch(
+                f"/api/v1/admin/users/{staff_id}",
+                json={"is_active": False},
+                headers=platform_admin_headers,
+            )
+            assert deactivated_staff.status_code == 200
+            assert deactivated_staff.json()["is_active"] is False
         finally:
             if facility_id is not None:
                 with SessionLocal() as db:
