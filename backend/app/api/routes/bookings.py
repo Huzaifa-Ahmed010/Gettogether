@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -12,7 +12,15 @@ from app.core.audit import record_audit_event
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Booking, Facility, Service, User
-from app.schemas.booking import BookingCreate, BookingCreated, BookingRead, BookingSummary, VerifyRead, VerifyRequest
+from app.schemas.booking import (
+    BookingCreate,
+    BookingCreated,
+    BookingRead,
+    BookingSummary,
+    PaymentCollectionRequest,
+    VerifyRead,
+    VerifyRequest,
+)
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -64,7 +72,9 @@ def create_booking(
         service_id=service.id,
         appointment_at=payload.appointment_at,
         payment_method="physical",
-        payment_status="unpaid",
+        payment_status="unpaid" if service.fee_paise else "not_required",
+        payment_due_paise=service.fee_paise,
+        payment_currency="INR",
         verification_code=hash_booking_code(code),
     )
     db.add(booking)
@@ -83,6 +93,11 @@ def create_booking(
         appointment_at=booking.appointment_at,
         payment_method=booking.payment_method,
         payment_status=booking.payment_status,
+        payment_due_paise=booking.payment_due_paise,
+        payment_amount_paise=booking.payment_amount_paise,
+        payment_currency=booking.payment_currency,
+        payment_collected_at=booking.payment_collected_at,
+        payment_reference=booking.payment_reference,
         status=booking.status,
         verification_code=code,
     )
@@ -148,6 +163,37 @@ def cancel_booking(
     return booking
 
 
+@router.post("/{booking_id}/payment", response_model=BookingRead)
+def record_physical_payment(
+    booking_id: int,
+    payload: PaymentCollectionRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role not in {"platform_admin", "facility_staff"}:
+        raise HTTPException(403, "Facility staff access is required to record payments")
+    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update().first()
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    require_facility_access(user, booking.facility_id)
+    if booking.status != "booked":
+        raise HTTPException(409, "Payment can only be recorded for an active booking")
+    if booking.payment_status != "unpaid":
+        raise HTTPException(409, "Payment has already been recorded or is not required")
+    if booking.payment_due_paise <= 0:
+        raise HTTPException(409, "No payment is due for this booking")
+
+    booking.payment_amount_paise = booking.payment_due_paise
+    booking.payment_status = "paid"
+    booking.payment_collected_by_user_id = user.id
+    booking.payment_collected_at = datetime.now(timezone.utc)
+    booking.payment_reference = payload.reference
+    record_audit_event(db, user, "booking.payment_collected", "booking", booking.id)
+    db.commit()
+    db.refresh(booking)
+    return booking
+
+
 @router.post("/verify", response_model=VerifyRead)
 def verify_code(
     payload: VerifyRequest,
@@ -171,6 +217,34 @@ def verify_code(
     if booking.status != "booked":
         return VerifyRead(valid=False, message="Booking is not active", booking_id=booking.id,
                           payment_status=booking.payment_status, appointment_at=booking.appointment_at)
+    appointment_at = booking.appointment_at
+    if appointment_at.tzinfo is None:
+        appointment_at = appointment_at.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    if now < appointment_at - timedelta(minutes=30):
+        return VerifyRead(
+            valid=False,
+            message="Check-in opens 30 minutes before the appointment.",
+            booking_id=booking.id,
+            payment_status=booking.payment_status,
+            appointment_at=booking.appointment_at,
+        )
+    if now > appointment_at + timedelta(minutes=60):
+        return VerifyRead(
+            valid=False,
+            message="The check-in window has closed.",
+            booking_id=booking.id,
+            payment_status=booking.payment_status,
+            appointment_at=booking.appointment_at,
+        )
+    if booking.payment_status == "unpaid":
+        return VerifyRead(
+            valid=False,
+            message="Record the pay-at-facility payment before checking in.",
+            booking_id=booking.id,
+            payment_status=booking.payment_status,
+            appointment_at=booking.appointment_at,
+        )
     booking.status = "verified"
     booking.verified_at = datetime.now(timezone.utc)
     record_audit_event(db, user, "booking.verified", "booking", booking.id)

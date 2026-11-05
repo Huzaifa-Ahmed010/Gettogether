@@ -66,13 +66,22 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 other_staff, other_staff_headers = add_user(db, "facility_staff")
                 other_staff_id = other_staff.id
 
-            appointment_at = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+            appointment_at = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()
             booking_request = {
                 "facility_id": facility_id,
                 "service_id": service_id,
                 "appointment_at": appointment_at,
                 "payment_method": "physical",
             }
+            naive_request = {
+                **booking_request,
+                "appointment_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            }
+            assert client.post(
+                "/api/v1/bookings",
+                json=naive_request,
+                headers=patient_headers,
+            ).status_code == 422
             assert client.post("/api/v1/bookings", json=booking_request).status_code == 401
             assert client.post(
                 "/api/v1/bookings",
@@ -89,6 +98,8 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
             booking = created.json()
             booking_id = booking["id"]
             assert len(booking["verification_code"]) == 6
+            assert booking["payment_status"] == "unpaid"
+            assert booking["payment_due_paise"] == 10000
             assert "patient_email" not in booking
             with SessionLocal() as db:
                 stored_booking = db.get(Booking, booking_id)
@@ -131,6 +142,49 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 json={"code": booking["verification_code"]},
                 headers=other_staff_headers,
             ).status_code == 403
+            unpaid_check_in = client.post(
+                "/api/v1/bookings/verify",
+                json={"code": booking["verification_code"]},
+                headers=staff_headers,
+            )
+            assert unpaid_check_in.status_code == 200
+            assert unpaid_check_in.json()["valid"] is False
+            assert "payment" in unpaid_check_in.json()["message"].lower()
+            assert client.post(
+                f"/api/v1/bookings/{booking_id}/payment",
+                json={"reference": "patient-cannot-collect"},
+                headers=patient_headers,
+            ).status_code == 403
+            assert client.post(
+                f"/api/v1/bookings/{booking_id}/payment",
+                json={"reference": "wrong-facility"},
+                headers=other_staff_headers,
+            ).status_code == 403
+            payment = client.post(
+                f"/api/v1/bookings/{booking_id}/payment",
+                json={"reference": "receipt-123"},
+                headers=staff_headers,
+            )
+            assert payment.status_code == 200
+            assert payment.json()["payment_status"] == "paid"
+            assert payment.json()["payment_amount_paise"] == 10000
+            assert payment.json()["payment_reference"] == "receipt-123"
+            with SessionLocal() as db:
+                stored_booking = db.get(Booking, booking_id)
+                assert stored_booking is not None
+                assert stored_booking.payment_collected_by_user_id == staff_id
+                assert stored_booking.payment_collected_at is not None
+            admin_bookings = client.get("/api/v1/admin/bookings", headers=staff_headers)
+            assert admin_bookings.status_code == 200
+            paid_booking = next(row for row in admin_bookings.json() if row["id"] == booking_id)
+            assert paid_booking["payment_collector_name"] == "Test facility_staff"
+            assert paid_booking["payment_reference"] == "receipt-123"
+            assert paid_booking["payment_amount_paise"] == 10000
+            assert client.post(
+                f"/api/v1/bookings/{booking_id}/payment",
+                json={"reference": "duplicate"},
+                headers=staff_headers,
+            ).status_code == 409
 
             verified = client.post(
                 "/api/v1/bookings/verify",
@@ -151,18 +205,51 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
 
             second_booking = client.post(
                 "/api/v1/bookings",
-                json=booking_request,
+                json={
+                    **booking_request,
+                    "appointment_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
+                },
                 headers=patient_headers,
             )
             assert second_booking.status_code == 201
+            second_booking_id = second_booking.json()["id"]
+            with SessionLocal() as db:
+                stored_booking = db.get(Booking, second_booking_id)
+                assert stored_booking is not None
+                stored_booking.appointment_at = datetime.now(timezone.utc) + timedelta(minutes=31)
+                db.commit()
+            early_check_in = client.post(
+                "/api/v1/bookings/verify",
+                json={"code": second_booking.json()["verification_code"]},
+                headers=staff_headers,
+            )
+            assert early_check_in.json()["valid"] is False
+            assert "opens 30 minutes" in early_check_in.json()["message"]
+            with SessionLocal() as db:
+                stored_booking = db.get(Booking, second_booking_id)
+                assert stored_booking is not None
+                stored_booking.appointment_at = datetime.now(timezone.utc) - timedelta(minutes=61)
+                db.commit()
+            late_check_in = client.post(
+                "/api/v1/bookings/verify",
+                json={"code": second_booking.json()["verification_code"]},
+                headers=staff_headers,
+            )
+            assert late_check_in.json()["valid"] is False
+            assert "window has closed" in late_check_in.json()["message"]
+            with SessionLocal() as db:
+                stored_booking = db.get(Booking, second_booking_id)
+                assert stored_booking is not None
+                stored_booking.appointment_at = datetime.now(timezone.utc) + timedelta(days=2)
+                db.commit()
             cancelled = client.post(
-                f"/api/v1/bookings/{second_booking.json()['id']}/cancel",
+                f"/api/v1/bookings/{second_booking_id}/cancel",
                 headers=patient_headers,
             )
             assert cancelled.status_code == 200
             assert cancelled.json()["status"] == "cancelled"
             assert client.post(
-                f"/api/v1/bookings/{second_booking.json()['id']}/cancel",
+                f"/api/v1/bookings/{second_booking_id}/cancel",
                 headers=patient_headers,
             ).status_code == 409
         finally:

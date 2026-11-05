@@ -159,6 +159,11 @@ export type Booking = {
   appointment_at: string;
   payment_method: "physical";
   payment_status: string;
+  payment_due_paise: number;
+  payment_amount_paise: number | null;
+  payment_currency: string;
+  payment_collected_at: string | null;
+  payment_reference: string | null;
   status: string;
   verification_code?: string;
   facility_name?: string;
@@ -179,6 +184,13 @@ export type AdminBooking = {
   appointment_at: string;
   payment_method: "physical";
   payment_status: string;
+  payment_due_paise: number;
+  payment_amount_paise: number | null;
+  payment_currency: string;
+  payment_collected_at: string | null;
+  payment_collected_by_user_id: number | null;
+  payment_collector_name: string | null;
+  payment_reference: string | null;
   status: string;
   patient_name: string;
   patient_email_masked: string;
@@ -347,6 +359,13 @@ export function getManagedBookings(filters?: { status?: string; facility_id?: nu
 
 export function cancelManagedBooking(bookingId: number) {
   return request<AdminBooking>(`/admin/bookings/${bookingId}/cancel`, { method: "POST" });
+}
+
+export function recordManagedBookingPayment(bookingId: number, reference: string) {
+  return request<Booking>(`/bookings/${bookingId}/payment`, {
+    method: "POST",
+    body: JSON.stringify({ reference }),
+  });
 }
 
 export function verifyBooking(code: string) {

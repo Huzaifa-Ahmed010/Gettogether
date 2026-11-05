@@ -72,6 +72,13 @@ class AdminBookingRead(BaseModel):
     appointment_at: datetime
     payment_method: str
     payment_status: str
+    payment_due_paise: int
+    payment_amount_paise: int | None
+    payment_currency: str
+    payment_collected_at: datetime | None
+    payment_collected_by_user_id: int | None
+    payment_collector_name: str | None
+    payment_reference: str | None
     status: str
     patient_name: str
     patient_email_masked: str

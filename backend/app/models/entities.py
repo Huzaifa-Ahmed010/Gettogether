@@ -38,6 +38,14 @@ class Booking(Base):
     appointment_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     payment_method: Mapped[str] = mapped_column(String(20))  # physical | online
     payment_status: Mapped[str] = mapped_column(String(20), default="unpaid")
+    payment_due_paise: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    payment_amount_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payment_currency: Mapped[str] = mapped_column(String(3), default="INR", nullable=False)
+    payment_collected_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    payment_collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    payment_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="booked")
     verification_code: Mapped[str] = mapped_column(String(64), index=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

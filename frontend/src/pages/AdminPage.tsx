@@ -14,6 +14,7 @@ import {
   getManagedFacilities,
   getManagedServices,
   getManagedUsers,
+  recordManagedBookingPayment,
   updateManagedFacility,
   updateManagedService,
   updateManagedUser,
@@ -37,6 +38,10 @@ function formatAppointment(value: string) {
   return new Date(value).toLocaleString();
 }
 
+function formatMoney(amountPaise: number, currency: string) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency }).format(amountPaise / 100);
+}
+
 export default function AdminPage() {
   const { user } = useAuth();
   const isPlatformAdmin = user?.role === "platform_admin";
@@ -53,6 +58,7 @@ export default function AdminPage() {
   const [bookingStatus, setBookingStatus] = useState("");
   const [bookingFacilityFilter, setBookingFacilityFilter] = useState("");
   const [codes, setCodes] = useState<Record<number, string>>({});
+  const [paymentSavingId, setPaymentSavingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyDirectoryActions, setBusyDirectoryActions] = useState<Set<string>>(() => new Set());
@@ -431,6 +437,23 @@ export default function AdminPage() {
     }
   }
 
+  async function submitPaymentCollection(event: FormEvent<HTMLFormElement>, booking: AdminBooking) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setPaymentSavingId(booking.id);
+    setError("");
+    setNotice("");
+    try {
+      await recordManagedBookingPayment(booking.id, String(form.get("reference") ?? ""));
+      setNotice("Facility payment recorded.");
+      await loadBookings();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setPaymentSavingId(null);
+    }
+  }
+
   async function submitAccountUpdate(event: FormEvent<HTMLFormElement>, account: AdminUser) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -563,7 +586,6 @@ export default function AdminPage() {
               <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => editFacility(facility)}>Edit</button><button type="button" className="secondary-button" disabled={isFacilityBusy(facility.id)} onClick={() => toggleFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:status`) ? "Updating…" : facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={isFacilityBusy(facility.id)} onClick={() => deleteFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:delete`) ? "Deleting…" : "Delete"}</button></div>
             </article>)}
           </div>
-          {accountsHaveMore && <button className="secondary-button" disabled={loadingMoreAccounts} onClick={loadMoreAccounts}>{loadingMoreAccounts ? "Loading…" : "Load more accounts"}</button>}
         </section>}
       </section>}
 
@@ -588,8 +610,14 @@ export default function AdminPage() {
             <div className="admin-item-heading"><div><h3>{booking.service_name}</h3><span className={`admin-status ${booking.status}`}>{booking.status}</span></div><b>{booking.facility_name}</b></div>
             <p>{booking.patient_name} · {booking.patient_email_masked}</p>
             <p>{formatAppointment(booking.appointment_at)}</p>
-            <p>Payment: {booking.payment_status} · {booking.payment_method === "physical" ? "at facility" : booking.payment_method}</p>
+            <p>Payment: {booking.payment_status} · {booking.payment_method === "physical" ? "at facility" : booking.payment_method} · {formatMoney(booking.payment_due_paise, booking.payment_currency)} due</p>
+            {booking.payment_status === "paid" && <p>Collected{booking.payment_collector_name ? ` by ${booking.payment_collector_name}` : ""}{booking.payment_collected_at ? ` · ${formatAppointment(booking.payment_collected_at)}` : ""}{booking.payment_reference ? ` · Receipt: ${booking.payment_reference}` : ""}</p>}
             {booking.status === "booked" && <div className="admin-actions admin-booking-actions">
+              {booking.payment_status === "unpaid" && <form className="admin-verify-form" onSubmit={(event) => submitPaymentCollection(event, booking)}>
+                <label htmlFor={`payment-reference-${booking.id}`}>Receipt or payment reference</label>
+                <input id={`payment-reference-${booking.id}`} name="reference" maxLength={120} required />
+                <button className="secondary-button" disabled={paymentSavingId === booking.id}>{paymentSavingId === booking.id ? "Recording…" : "Record payment"}</button>
+              </form>}
               <form className="admin-verify-form" onSubmit={(event) => submitVerification(event, booking)}>
                 <label htmlFor={`booking-code-${booking.id}`}>6-digit check-in code</label>
                 <input id={`booking-code-${booking.id}`} value={codes[booking.id] ?? ""} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required onChange={(event) => setCodes((current) => ({ ...current, [booking.id]: event.target.value.replace(/\D/g, "").slice(0, 6) }))} />
@@ -620,6 +648,7 @@ export default function AdminPage() {
             </form>}
           </article>)}
         </div>
+        {accountsHaveMore && <button className="secondary-button" disabled={loadingMoreAccounts} onClick={loadMoreAccounts}>{loadingMoreAccounts ? "Loading…" : "Load more accounts"}</button>}
       </section>}
     </main>
   </SiteLayout>;

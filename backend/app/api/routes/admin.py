@@ -234,6 +234,7 @@ def list_managed_bookings(
         db.query(Booking, Facility.name, Service.name)
         .join(Facility, Booking.facility_id == Facility.id)
         .join(Service, Booking.service_id == Service.id)
+        .outerjoin(User, Booking.payment_collected_by_user_id == User.id)
     )
     if user.role == "facility_staff":
         if facility_id is not None and facility_id != user.facility_id:
@@ -243,7 +244,12 @@ def list_managed_bookings(
         query = query.filter(Booking.facility_id == facility_id)
     if status:
         query = query.filter(Booking.status == status)
-    rows = query.order_by(Booking.appointment_at.desc()).offset(offset).limit(limit).all()
+    rows = query.with_entities(
+        Booking,
+        Facility.name,
+        Service.name,
+        User.name,
+    ).order_by(Booking.appointment_at.desc()).offset(offset).limit(limit).all()
     return [
         {
             "id": booking.id,
@@ -252,13 +258,20 @@ def list_managed_bookings(
             "appointment_at": booking.appointment_at,
             "payment_method": booking.payment_method,
             "payment_status": booking.payment_status,
+            "payment_due_paise": booking.payment_due_paise,
+            "payment_amount_paise": booking.payment_amount_paise,
+            "payment_currency": booking.payment_currency,
+            "payment_collected_at": booking.payment_collected_at,
+            "payment_collected_by_user_id": booking.payment_collected_by_user_id,
+            "payment_collector_name": collector_name,
+            "payment_reference": booking.payment_reference,
             "status": booking.status,
             "patient_name": booking.patient_name,
             "patient_email_masked": mask_email(booking.patient_email),
             "facility_name": facility_name,
             "service_name": service_name,
         }
-        for booking, facility_name, service_name in rows
+        for booking, facility_name, service_name, collector_name in rows
     ]
 
 
@@ -286,6 +299,11 @@ def cancel_managed_booking(
     db.refresh(booking)
     facility = db.get(Facility, booking.facility_id)
     service = db.get(Service, booking.service_id)
+    collector = (
+        db.get(User, booking.payment_collected_by_user_id)
+        if booking.payment_collected_by_user_id is not None
+        else None
+    )
     return {
         "id": booking.id,
         "facility_id": booking.facility_id,
@@ -293,6 +311,13 @@ def cancel_managed_booking(
         "appointment_at": booking.appointment_at,
         "payment_method": booking.payment_method,
         "payment_status": booking.payment_status,
+        "payment_due_paise": booking.payment_due_paise,
+        "payment_amount_paise": booking.payment_amount_paise,
+        "payment_currency": booking.payment_currency,
+        "payment_collected_at": booking.payment_collected_at,
+        "payment_collected_by_user_id": booking.payment_collected_by_user_id,
+        "payment_collector_name": collector.name if collector else None,
+        "payment_reference": booking.payment_reference,
         "status": booking.status,
         "patient_name": booking.patient_name,
         "patient_email_masked": mask_email(booking.patient_email),

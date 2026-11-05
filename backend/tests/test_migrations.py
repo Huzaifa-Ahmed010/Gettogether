@@ -34,8 +34,16 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
     }
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0004_booking_patient_user"
+            "0005_booking_payment_collection"
         )
+        assert {
+            "payment_due_paise",
+            "payment_amount_paise",
+            "payment_currency",
+            "payment_collected_by_user_id",
+            "payment_collected_at",
+            "payment_reference",
+        } <= {column["name"] for column in inspector.get_columns("bookings")}
     engine.dispose()
 
 
@@ -112,6 +120,14 @@ def test_migrations_adopt_legacy_schema_without_dropping_users(tmp_path, monkeyp
     assert "patient_user_id" in {
         column["name"] for column in inspector.get_columns("bookings")
     }
+    assert {
+        "payment_due_paise",
+        "payment_amount_paise",
+        "payment_currency",
+        "payment_collected_by_user_id",
+        "payment_collected_at",
+        "payment_reference",
+    } <= {column["name"] for column in inspector.get_columns("bookings")}
     with engine.connect() as migrated:
         user = migrated.execute(
             text("SELECT id, email, role, email_verified, token_version, phone FROM users WHERE id = 7")
@@ -120,6 +136,9 @@ def test_migrations_adopt_legacy_schema_without_dropping_users(tmp_path, monkeyp
         assert migrated.execute(
             text("SELECT patient_user_id FROM bookings WHERE id = 9")
         ).scalar_one() == 7
+        assert migrated.execute(
+            text("SELECT payment_due_paise, payment_currency, payment_status FROM bookings WHERE id = 9")
+        ).one() == (1000, "INR", "unpaid")
         booking_code = migrated.execute(
             text("SELECT verification_code FROM bookings WHERE id = 9")
         ).scalar_one()
