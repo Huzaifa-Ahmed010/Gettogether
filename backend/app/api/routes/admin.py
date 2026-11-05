@@ -304,6 +304,8 @@ def cancel_managed_booking(
 @router.get("/users", response_model=list[AdminUserRead])
 def list_managed_users(
     include_inactive: bool = True,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -311,7 +313,7 @@ def list_managed_users(
     query = db.query(User, Facility.name).outerjoin(Facility, User.facility_id == Facility.id)
     if not include_inactive:
         query = query.filter(User.is_active.is_(True))
-    rows = query.order_by(User.created_at.desc(), User.id.desc()).all()
+    rows = query.order_by(User.created_at.desc(), User.id.desc()).offset(offset).limit(limit).all()
     return [
         {
             **AdminUserRead.model_validate(account).model_dump(),

@@ -22,7 +22,7 @@ The application code has production-oriented controls, but this repository does 
 4. Start API replicas with production secrets and explicit trusted-host and trusted-proxy lists.
 5. Verify `/api/v1/health` (process liveness) and `/api/v1/readyz` (PostgreSQL, expected migration revision, and Redis).
 6. Confirm API documentation endpoints are unavailable in production and that invalid hosts/origins are rejected.
-7. Promote the first verified operator account with `python -m app.cli promote-admin verified-admin@example.com`; assign facility staff with `python -m app.cli assign-staff verified-staff@example.com FACILITY_ID`.
+7. Promote the first active operator account with `python -m app.cli promote-admin admin@example.com`. Platform admins can assign facility staff from the dashboard or use `python -m app.cli assign-staff staff@example.com FACILITY_ID`.
 8. Exercise registration (email verification is temporarily paused), login, password reset, booking, cancellation, facility-scoped check-in, and rate-limit behavior in staging before opening access. Confirm password-reset email delivery through the configured SMTP provider.
 
 ## Operational and privacy gates
@@ -38,5 +38,5 @@ The application code has production-oriented controls, but this repository does 
 - MFA and HttpOnly/Secure cookie sessions are not implemented; bearer tokens are stored in browser local storage.
 - Appointment schedules, capacity/slot locking, duplicate booking prevention, and rescheduling are not implemented.
 - Payments are not collected. Bookings remain unpaid and payment-at-facility is only a selection; add provider integration and verified server-side webhooks before charging.
-- Facility-staff provisioning is currently operator CLI-only. Add an audited invitation/onboarding process before delegating staff administration.
+- Platform admins can assign facility staff in the dashboard; first platform-admin bootstrap is operator CLI-managed. Add an audited invitation/onboarding process before delegating staff administration.
 - Audit records cover selected writes, not all sensitive reads, and there is no automated retention/export policy.

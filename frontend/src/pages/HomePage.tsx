@@ -31,7 +31,7 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
-    getFacilities({ city: city || undefined })
+    getFacilities({ city: city || undefined, limit: 4 })
       .then((items) => {
         if (active) setFacilities(items);
       })
@@ -76,7 +76,7 @@ export default function HomePage() {
         <div className="category-grid">{diagnostics.map(({ icon: Icon, title }) => <Link className="category-card diagnostic-card" key={title} to={`/diagnostics?search=${encodeURIComponent(title)}`}><span className="category-icon"><Icon size={29} /></span><b>{title}</b><span>Explore services</span></Link>)}</div>
       </section>
       <section className="partner-section" id="hospitals">
-        <div className="section-heading"><div><p className="eyebrow">HEALTHCARE AROUND YOU</p><h2>Partner Centers {city ? `in ${city}` : "Near You"}</h2></div><span className="partner-count">{facilities.length} centers</span></div>
+        <div className="section-heading"><div><p className="eyebrow">HEALTHCARE AROUND YOU</p><h2>Partner Centers {city ? `in ${city}` : "Near You"}</h2></div><span className="partner-count">{facilities.length === 4 ? "3+ centers" : `${facilities.length} centers`}</span></div>
         {error && <p className="notice" role="alert">{error}</p>}
         <div className="facility-grid">{facilities.length ? facilities.slice(0, 3).map((facility) => <FacilityCard facility={facility} key={facility.id} />) : !error ? <div className="empty-state"><ClipboardPlus size={30} /><b>No partner centers found yet</b><span>Centers will appear here when added by an authorized administrator.</span></div> : null}</div>
         {facilities.length > 3 && <p className="directory-more"><Link to="/hospitals">Browse all partner centers <ChevronRight size={17} /></Link></p>}

@@ -28,10 +28,12 @@ def test_production_readiness_requires_latest_schema_revision(monkeypatch):
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    expected_revision = health_routes.expected_schema_revision()
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         connection.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('0003_optional_user_phone')")
+            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+            {"revision": expected_revision},
         )
 
     class ReadyRedis:

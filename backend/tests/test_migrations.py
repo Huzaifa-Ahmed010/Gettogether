@@ -29,9 +29,12 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
     )
     assert "token_version" in {column["name"] for column in inspector.get_columns("users")}
     assert "phone" in {column["name"] for column in inspector.get_columns("users")}
+    assert "patient_user_id" in {
+        column["name"] for column in inspector.get_columns("bookings")
+    }
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0003_optional_user_phone"
+            "0004_booking_patient_user"
         )
     engine.dispose()
 
@@ -106,11 +109,17 @@ def test_migrations_adopt_legacy_schema_without_dropping_users(tmp_path, monkeyp
     inspector = inspect(engine)
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     assert {"role", "email_verified", "facility_id", "token_version", "phone"} <= user_columns
+    assert "patient_user_id" in {
+        column["name"] for column in inspector.get_columns("bookings")
+    }
     with engine.connect() as migrated:
         user = migrated.execute(
             text("SELECT id, email, role, email_verified, token_version, phone FROM users WHERE id = 7")
         ).one()
         assert user == (7, "legacy@example.com", "patient", False, 0, None)
+        assert migrated.execute(
+            text("SELECT patient_user_id FROM bookings WHERE id = 9")
+        ).scalar_one() == 7
         booking_code = migrated.execute(
             text("SELECT verification_code FROM bookings WHERE id = 9")
         ).scalar_one()

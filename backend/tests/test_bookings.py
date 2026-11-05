@@ -93,11 +93,29 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
             with SessionLocal() as db:
                 stored_booking = db.get(Booking, booking_id)
                 assert stored_booking is not None
+                assert stored_booking.patient_user_id == patient_id
                 assert len(stored_booking.verification_code) == 64
                 assert db.query(AuditEvent).filter(
                     AuditEvent.action == "booking.created",
                     AuditEvent.resource_id == booking_id,
                 ).count() == 1
+                patient = db.get(User, patient_id)
+                assert patient is not None
+                original_email = patient.email
+                patient.email = f"renamed-{original_email}"
+                db.commit()
+            patient_bookings = client.get("/api/v1/bookings", headers=patient_headers)
+            assert patient_bookings.status_code == 200
+            assert patient_bookings.json()[0]["id"] == booking_id
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}",
+                headers=patient_headers,
+            ).status_code == 200
+            with SessionLocal() as db:
+                patient = db.get(User, patient_id)
+                assert patient is not None
+                patient.email = original_email
+                db.commit()
 
             assert client.get(
                 f"/api/v1/bookings/{booking_id}",

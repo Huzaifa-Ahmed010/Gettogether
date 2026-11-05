@@ -28,6 +28,9 @@ class Booking(Base):
     __tablename__ = "bookings"
     __table_args__ = (UniqueConstraint("verification_code", name="uq_booking_verification_code"),)
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    patient_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     patient_name: Mapped[str] = mapped_column(String(180))
     patient_email: Mapped[str] = mapped_column(String(254), index=True)
     facility_id: Mapped[int] = mapped_column(ForeignKey("facilities.id"), index=True)

@@ -57,6 +57,7 @@ def create_booking(
 
     code = new_code(db)
     booking = Booking(
+        patient_user_id=user.id,
         patient_name=user.name,
         patient_email=user.email,
         facility_id=facility.id,
@@ -96,8 +97,8 @@ def list_my_bookings(
         db.query(Booking, Facility.name, Service.name)
         .join(Facility, Booking.facility_id == Facility.id)
         .join(Service, Booking.service_id == Service.id)
-        .filter(Booking.patient_email == user.email)
-        .order_by(Booking.appointment_at.desc())
+        .filter(Booking.patient_user_id == user.id)
+        .order_by(Booking.appointment_at.desc(), Booking.id.desc())
         .all()
     )
     return [
@@ -119,7 +120,7 @@ def get_booking(
     booking = db.get(Booking, booking_id)
     if not booking:
         raise HTTPException(404, "Booking not found")
-    if booking.patient_email != user.email:
+    if booking.patient_user_id != user.id:
         require_facility_access(user, booking.facility_id)
     return booking
 
@@ -131,7 +132,7 @@ def cancel_booking(
     user: User = Depends(get_current_user),
 ):
     booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update().first()
-    if not booking or booking.patient_email != user.email:
+    if not booking or booking.patient_user_id != user.id:
         raise HTTPException(404, "Booking not found")
     appointment_at = booking.appointment_at
     if appointment_at.tzinfo is None:

@@ -1,3 +1,8 @@
+from functools import lru_cache
+from pathlib import Path
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -8,7 +13,13 @@ from app.db.session import engine
 from app.core.rate_limit import redis_client
 
 router = APIRouter(tags=["health"])
-EXPECTED_SCHEMA_REVISION = "0003_optional_user_phone"
+
+
+@lru_cache(maxsize=1)
+def expected_schema_revision() -> str:
+    backend_root = Path(__file__).resolve().parents[3]
+    migration_config = Config(str(backend_root / "alembic.ini"))
+    return ScriptDirectory.from_config(migration_config).get_current_head()
 
 @router.get("/health")
 def health_check():
@@ -27,7 +38,7 @@ async def readiness_check():
                 revision = connection.execute(
                     text("SELECT version_num FROM alembic_version")
                 ).scalar_one_or_none()
-                if revision != EXPECTED_SCHEMA_REVISION:
+                if revision != expected_schema_revision():
                     raise HTTPException(status_code=503, detail="Database schema is not at the expected revision")
                 if redis_client is None:
                     raise HTTPException(status_code=503, detail="Rate-limiting service is not ready")

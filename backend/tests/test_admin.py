@@ -424,6 +424,19 @@ def test_unverified_accounts_are_visible_and_manageable_in_admin_dashboard(platf
                 "/api/v1/admin/dashboard",
                 headers=platform_admin_headers,
             ).json()["users"] == len(response.json())
+            first_page = client.get(
+                "/api/v1/admin/users",
+                params={"limit": 1, "offset": 0},
+                headers=platform_admin_headers,
+            )
+            second_page = client.get(
+                "/api/v1/admin/users",
+                params={"limit": 1, "offset": 1},
+                headers=platform_admin_headers,
+            )
+            assert first_page.status_code == second_page.status_code == 200
+            assert len(first_page.json()) == len(second_page.json()) == 1
+            assert first_page.json()[0]["id"] != second_page.json()[0]["id"]
             updated = client.patch(
                 f"/api/v1/admin/users/{unverified_id}",
                 json={"is_active": False},

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createBooking, getFacility, getFacilityServices, type Booking, type Facility, type Service } from "../api/client";
+import { createBooking, DIRECTORY_PAGE_SIZE, getFacility, getFacilityServices, type Booking, type Facility, type Service } from "../api/client";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
 
@@ -12,6 +12,9 @@ export default function FacilityDetailPage() {
   const { user } = useAuth();
   const [facility, setFacility] = useState<Facility | null>(null);
   const [services, setServices] = useState<FacilityService[]>([]);
+  const [servicesHaveMore, setServicesHaveMore] = useState(false);
+  const [loadingMoreServices, setLoadingMoreServices] = useState(false);
+  const [serviceError, setServiceError] = useState("");
   const [error, setError] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [appointmentAt, setAppointmentAt] = useState("");
@@ -30,11 +33,26 @@ export default function FacilityDetailPage() {
         if (active) {
           setFacility(facilityResult);
           setServices(serviceResults);
+          setServicesHaveMore(serviceResults.length === DIRECTORY_PAGE_SIZE);
         }
       })
       .catch(() => { if (active) setError("Could not load this facility. It may no longer be available."); });
     return () => { active = false; };
   }, [id]);
+
+  async function loadMoreServices() {
+    setLoadingMoreServices(true);
+    setServiceError("");
+    try {
+      const results = await getFacilityServices(id, { offset: services.length });
+      setServices((current) => [...current, ...results]);
+      setServicesHaveMore(results.length === DIRECTORY_PAGE_SIZE);
+    } catch {
+      setServiceError("Could not load more services. Please try again.");
+    } finally {
+      setLoadingMoreServices(false);
+    }
+  }
 
   async function submitBooking(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,7 +88,8 @@ export default function FacilityDetailPage() {
         {facility.phone && <a className="primary-link" href={`tel:${facility.phone}`}>Call {facility.phone}</a>}
         <section className="detail-services">
           <h2>Available services</h2>
-          {services.length ? <ul>{services.map((service) => <li key={service.id}><div><b>{service.name}</b><span>{service.category}{service.provider_name ? ` · ${service.provider_name}` : ""}</span></div><strong>₹{(service.fee_paise / 100).toFixed(2)}</strong></li>)}</ul> : <p>No services are listed for this center yet.</p>}
+          {serviceError && <p className="notice" role="alert">{serviceError}</p>}
+          {services.length ? <><ul>{services.map((service) => <li key={service.id}><div><b>{service.name}</b><span>{service.category}{service.provider_name ? ` · ${service.provider_name}` : ""}</span></div><strong>₹{(service.fee_paise / 100).toFixed(2)}</strong></li>)}</ul>{servicesHaveMore && <button className="secondary-button" disabled={loadingMoreServices} onClick={loadMoreServices}>{loadingMoreServices ? "Loading…" : "Load more services"}</button>}</> : <p>No services are listed for this center yet.</p>}
         </section>
         <section className="booking-panel" id="book-appointment">
           <h2>Book an appointment</h2>

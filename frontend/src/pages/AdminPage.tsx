@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
 import {
+  DIRECTORY_PAGE_SIZE,
   cancelManagedBooking,
   createFacility,
   createFacilityService,
@@ -47,6 +48,8 @@ export default function AdminPage() {
   const [services, setServices] = useState<ManagedService[]>([]);
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [accounts, setAccounts] = useState<AdminUser[]>([]);
+  const [accountsHaveMore, setAccountsHaveMore] = useState(false);
+  const [loadingMoreAccounts, setLoadingMoreAccounts] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
   const [bookingFacilityFilter, setBookingFacilityFilter] = useState("");
   const [codes, setCodes] = useState<Record<number, string>>({});
@@ -114,7 +117,15 @@ export default function AdminPage() {
 
   async function loadAccounts() {
     if (!isPlatformAdmin) return;
-    setAccounts(await getManagedUsers());
+    const items: AdminUser[] = [];
+    let hasMore = true;
+    for (let offset = 0; hasMore && offset < Math.max(DIRECTORY_PAGE_SIZE, accounts.length); offset += DIRECTORY_PAGE_SIZE) {
+      const page = await getManagedUsers({ offset });
+      items.push(...page);
+      hasMore = page.length === DIRECTORY_PAGE_SIZE;
+    }
+    setAccounts(items);
+    setAccountsHaveMore(hasMore);
   }
 
   useEffect(() => {
@@ -184,7 +195,10 @@ export default function AdminPage() {
     let active = true;
     getManagedUsers()
       .then((items) => {
-        if (active) setAccounts(items);
+        if (active) {
+          setAccounts(items);
+          setAccountsHaveMore(items.length === DIRECTORY_PAGE_SIZE);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setError(errorText(reason));
@@ -193,6 +207,20 @@ export default function AdminPage() {
       active = false;
     };
   }, [canManage, isPlatformAdmin, tab]);
+
+  async function loadMoreAccounts() {
+    setLoadingMoreAccounts(true);
+    setError("");
+    try {
+      const items = await getManagedUsers({ offset: accounts.length });
+      setAccounts((current) => [...current, ...items]);
+      setAccountsHaveMore(items.length === DIRECTORY_PAGE_SIZE);
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setLoadingMoreAccounts(false);
+    }
+  }
 
   async function submitNewFacility(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -537,6 +565,7 @@ export default function AdminPage() {
               <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => editFacility(facility)}>Edit</button><button type="button" className="secondary-button" disabled={isFacilityBusy(facility.id)} onClick={() => toggleFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:status`) ? "Updating…" : facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={isFacilityBusy(facility.id)} onClick={() => deleteFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:delete`) ? "Deleting…" : "Delete"}</button></div>
             </article>)}
           </div>
+          {accountsHaveMore && <button className="secondary-button" disabled={loadingMoreAccounts} onClick={loadMoreAccounts}>{loadingMoreAccounts ? "Loading…" : "Load more accounts"}</button>}
         </section>}
       </section>}
 

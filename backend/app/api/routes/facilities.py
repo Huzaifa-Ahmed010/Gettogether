@@ -15,6 +15,8 @@ def list_facilities(
     city: str | None = Query(default=None),
     facility_type: str | None = Query(default=None),
     search: str | None = Query(default=None, min_length=1, max_length=180),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
     query = db.query(Facility).filter(Facility.is_active.is_(True))
@@ -43,13 +45,15 @@ def list_facilities(
                 matching_services,
             )
         )
-    return query.order_by(Facility.name).all()
+    return query.order_by(Facility.name, Facility.id).offset(offset).limit(limit).all()
 
 @services_router.get("", response_model=list[ServiceSearchRead])
 def search_services(
     search: str | None = Query(default=None, min_length=1, max_length=180),
     city: str | None = Query(default=None, min_length=1, max_length=100),
     service_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
     if service_type and service_type not in {"doctor", "diagnostic"}:
@@ -84,7 +88,10 @@ def search_services(
             "facility_address": facility.address,
             "facility_phone": facility.phone,
         }
-        for service, facility in query.order_by(Service.name, Facility.name).all()
+        for service, facility in query.order_by(Service.name, Facility.name, Service.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
     ]
 
 @router.post("", response_model=FacilityRead, status_code=201)
@@ -107,10 +114,23 @@ def get_facility(facility_id: int, db: Session = Depends(get_db)):
     return facility
 
 @router.get("/{facility_id}/services", response_model=list[ServiceRead])
-def list_services(facility_id: int, db: Session = Depends(get_db)):
-    if not db.get(Facility, facility_id):
+def list_services(
+    facility_id: int,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    facility = db.get(Facility, facility_id)
+    if not facility or not facility.is_active:
         raise HTTPException(404, "Facility not found")
-    return db.query(Service).filter(Service.facility_id == facility_id, Service.is_active.is_(True)).order_by(Service.name).all()
+    return (
+        db.query(Service)
+        .filter(Service.facility_id == facility_id, Service.is_active.is_(True))
+        .order_by(Service.name, Service.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 @router.post("/{facility_id}/services", response_model=ServiceRead, status_code=201)
 def create_service(facility_id: int, payload: ServiceCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):

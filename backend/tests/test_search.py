@@ -42,6 +42,18 @@ def test_service_and_facility_search(platform_admin_headers):
                 headers=platform_admin_headers,
             )
             assert service_response.status_code == 201
+            second_service_response = client.post(
+                f"/api/v1/facilities/{facility_id}/services",
+                json={
+                    "name": f"Cardiology Follow-up {suffix}",
+                    "category": "Cardiology",
+                    "service_type": "doctor",
+                    "provider_name": f"Dr Another Provider {suffix}",
+                    "fee_paise": 150000,
+                },
+                headers=platform_admin_headers,
+            )
+            assert second_service_response.status_code == 201
 
             services_response = client.get(
                 "/api/v1/services",
@@ -53,6 +65,18 @@ def test_service_and_facility_search(platform_admin_headers):
             assert services[0]["facility_id"] == facility_id
             assert services[0]["facility_name"] == facility_name
 
+            first_search_page = client.get(
+                "/api/v1/services",
+                params={"search": "Cardiology", "city": "Searchville", "limit": 1, "offset": 0},
+            )
+            second_search_page = client.get(
+                "/api/v1/services",
+                params={"search": "Cardiology", "city": "Searchville", "limit": 1, "offset": 1},
+            )
+            assert first_search_page.status_code == second_search_page.status_code == 200
+            assert len(first_search_page.json()) == len(second_search_page.json()) == 1
+            assert first_search_page.json()[0]["id"] != second_search_page.json()[0]["id"]
+
             global_search_response = client.get(
                 "/api/v1/services",
                 params={"search": service_name, "city": "Searchville"},
@@ -63,6 +87,45 @@ def test_service_and_facility_search(platform_admin_headers):
             facilities_response = client.get("/api/v1/facilities", params={"search": service_name})
             assert facilities_response.status_code == 200
             assert facility_id in [facility["id"] for facility in facilities_response.json()]
+            facility_page = client.get(
+                "/api/v1/facilities",
+                params={"search": service_name, "limit": 1, "offset": 0},
+            )
+            assert facility_page.status_code == 200
+            assert len(facility_page.json()) == 1
+
+            assert client.get(
+                "/api/v1/services",
+                params={"search": service_name, "limit": 101},
+            ).status_code == 422
+            first_service_page = client.get(
+                f"/api/v1/facilities/{facility_id}/services",
+                params={"limit": 1, "offset": 0},
+            )
+            second_service_page = client.get(
+                f"/api/v1/facilities/{facility_id}/services",
+                params={"limit": 1, "offset": 1},
+            )
+            assert first_service_page.status_code == second_service_page.status_code == 200
+            assert len(first_service_page.json()) == len(second_service_page.json()) == 1
+            assert first_service_page.json()[0]["id"] != second_service_page.json()[0]["id"]
+            assert client.get(
+                f"/api/v1/facilities/{facility_id}/services",
+                params={"limit": 0},
+            ).status_code == 422
+
+            deactivated = client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": False},
+                headers=platform_admin_headers,
+            )
+            assert deactivated.status_code == 200
+            assert client.get(f"/api/v1/facilities/{facility_id}").status_code == 404
+            assert client.get(f"/api/v1/facilities/{facility_id}/services").status_code == 404
+            assert client.get(
+                "/api/v1/services",
+                params={"search": service_name},
+            ).json() == []
         finally:
             if facility_id is not None:
                 with SessionLocal() as db:

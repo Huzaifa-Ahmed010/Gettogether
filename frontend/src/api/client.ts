@@ -18,6 +18,7 @@ if (import.meta.env.PROD) {
 }
 const API_BASE = configuredApiBaseUrl ?? "http://localhost:8000/api/v1";
 const SESSION_STORAGE_KEY = "gettogether_session";
+export const DIRECTORY_PAGE_SIZE = 50;
 
 function getStoredAccessToken(): string | null {
   const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
@@ -221,6 +222,8 @@ export function getFacilities(filters?: {
   city?: string;
   facility_type?: "hospital" | "diagnostic";
   search?: string;
+  limit?: number;
+  offset?: number;
 }) {
   const params = new URLSearchParams();
 
@@ -229,6 +232,8 @@ export function getFacilities(filters?: {
     params.set("facility_type", filters.facility_type);
   }
   if (filters?.search) params.set("search", filters.search);
+  params.set("limit", String(filters?.limit ?? DIRECTORY_PAGE_SIZE));
+  params.set("offset", String(filters?.offset ?? 0));
 
   const query = params.toString();
   return request<Facility[]>(
@@ -240,11 +245,15 @@ export function searchServices(filters: {
   city?: string;
   search?: string;
   service_type?: Service["service_type"];
+  limit?: number;
+  offset?: number;
 }) {
   const params = new URLSearchParams();
   if (filters.service_type) params.set("service_type", filters.service_type);
   if (filters.city) params.set("city", filters.city);
   if (filters.search) params.set("search", filters.search);
+  params.set("limit", String(filters.limit ?? DIRECTORY_PAGE_SIZE));
+  params.set("offset", String(filters.offset ?? 0));
   return request<Service[]>(`/services?${params.toString()}`);
 }
 
@@ -252,9 +261,16 @@ export function getFacility(facilityId: number) {
   return request<Facility>(`/facilities/${facilityId}`);
 }
 
-export function getFacilityServices(facilityId: number) {
+export function getFacilityServices(
+  facilityId: number,
+  pagination: { limit?: number; offset?: number } = {}
+) {
+  const params = new URLSearchParams({
+    limit: String(pagination.limit ?? DIRECTORY_PAGE_SIZE),
+    offset: String(pagination.offset ?? 0),
+  });
   return request<Omit<Service, "facility_name" | "facility_city" | "facility_address" | "facility_phone">[]>(
-    `/facilities/${facilityId}/services`
+    `/facilities/${facilityId}/services?${params}`
   );
 }
 
@@ -340,8 +356,12 @@ export function verifyBooking(code: string) {
   });
 }
 
-export function getManagedUsers() {
-  return request<AdminUser[]>("/admin/users");
+export function getManagedUsers(pagination: { limit?: number; offset?: number } = {}) {
+  const params = new URLSearchParams({
+    limit: String(pagination.limit ?? DIRECTORY_PAGE_SIZE),
+    offset: String(pagination.offset ?? 0),
+  });
+  return request<AdminUser[]>(`/admin/users?${params}`);
 }
 
 export function updateManagedUser(
