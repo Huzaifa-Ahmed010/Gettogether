@@ -7,9 +7,11 @@ import {
   cancelManagedBooking,
   createFacility,
   createFacilityService,
+  downloadBookingDocument,
   deleteManagedFacility,
   deleteManagedService,
   getAdminDashboard,
+  getBookingDocuments,
   getManagedBookings,
   getManagedFacilities,
   getManagedServices,
@@ -22,6 +24,7 @@ import {
   type AdminBooking,
   type AdminDashboard,
   type AdminUser,
+  type BookingDocument,
   type Facility,
   type ManagedService,
 } from "../api/client";
@@ -58,6 +61,10 @@ export default function AdminPage() {
   const [bookingStatus, setBookingStatus] = useState("");
   const [bookingFacilityFilter, setBookingFacilityFilter] = useState("");
   const [codes, setCodes] = useState<Record<number, string>>({});
+  const [documentsByBooking, setDocumentsByBooking] = useState<Record<number, BookingDocument[]>>({});
+  const [documentsLoaded, setDocumentsLoaded] = useState<Record<number, boolean>>({});
+  const [documentsLoadingId, setDocumentsLoadingId] = useState<number | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | null>(null);
   const [paymentSavingId, setPaymentSavingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -454,6 +461,32 @@ export default function AdminPage() {
     }
   }
 
+  async function loadBookingDocuments(bookingId: number) {
+    setError("");
+    setDocumentsLoadingId(bookingId);
+    try {
+      const documents = await getBookingDocuments(bookingId);
+      setDocumentsByBooking((current) => ({ ...current, [bookingId]: documents }));
+      setDocumentsLoaded((current) => ({ ...current, [bookingId]: true }));
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setDocumentsLoadingId(null);
+    }
+  }
+
+  async function downloadDocument(bookingId: number, file: BookingDocument) {
+    setError("");
+    setDownloadingDocumentId(file.id);
+    try {
+      await downloadBookingDocument(bookingId, file);
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  }
+
   async function submitAccountUpdate(event: FormEvent<HTMLFormElement>, account: AdminUser) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -607,11 +640,21 @@ export default function AdminPage() {
         {bookings.length === 0 && <p className="admin-empty">No bookings match this filter.</p>}
         <div className="admin-item-list">
           {bookings.map((booking) => <article className="admin-item admin-booking" key={booking.id}>
-            <div className="admin-item-heading"><div><h3>{booking.service_name}</h3><span className={`admin-status ${booking.status}`}>{booking.status}</span></div><b>{booking.facility_name}</b></div>
+            <div className="admin-item-heading"><div><h3>{booking.service_name}</h3>{booking.provider_name && <p>{booking.provider_name}</p>}<span className={`admin-status ${booking.status}`}>{booking.status}</span></div><b>{booking.facility_name}</b></div>
             <p>{booking.patient_name} · {booking.patient_email_masked}</p>
             <p>{formatAppointment(booking.appointment_at)}</p>
             <p>Payment: {booking.payment_status} · {booking.payment_method === "physical" ? "at facility" : booking.payment_method} · {formatMoney(booking.payment_due_paise, booking.payment_currency)} due</p>
             {booking.payment_status === "paid" && <p>Collected{booking.payment_collector_name ? ` by ${booking.payment_collector_name}` : ""}{booking.payment_collected_at ? ` · ${formatAppointment(booking.payment_collected_at)}` : ""}{booking.payment_reference ? ` · Receipt: ${booking.payment_reference}` : ""}</p>}
+            {user?.role === "facility_staff" && <section className="booking-documents">
+              <h4>Patient reports and prescriptions</h4>
+              {!documentsLoaded[booking.id] ? <button type="button" className="secondary-button" disabled={documentsLoadingId === booking.id} onClick={() => loadBookingDocuments(booking.id)}>{documentsLoadingId === booking.id ? "Loading…" : "View documents"}</button>
+                : documentsByBooking[booking.id]?.length
+                  ? <ul>{documentsByBooking[booking.id].map((file) => <li key={file.id}>
+                    <span>{file.filename} · {(file.size_bytes / (1024 * 1024)).toFixed(2)} MB</span>
+                    <button type="button" className="secondary-button" disabled={downloadingDocumentId === file.id} onClick={() => downloadDocument(booking.id, file)}>{downloadingDocumentId === file.id ? "Downloading…" : "Download"}</button>
+                  </li>)}</ul>
+                  : <p>No documents uploaded for this appointment.</p>}
+            </section>}
             {booking.status === "booked" && <div className="admin-actions admin-booking-actions">
               {booking.payment_status === "unpaid" && <form className="admin-verify-form" onSubmit={(event) => submitPaymentCollection(event, booking)}>
                 <label htmlFor={`payment-reference-${booking.id}`}>Receipt or payment reference</label>

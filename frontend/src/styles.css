@@ -96,15 +96,20 @@
 .booking-confirmation p{font-size:14px;line-height:1.6;color:#486466}
 .booking-code{display:inline-block;padding:10px 18px;background:#fff;border-radius:8px;font-size:24px;letter-spacing:5px;color:#07565b}
 .booking-list{display:grid;gap:12px;max-width:900px}
-.booking-list-card{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;padding:18px;background:#fff;border:1px solid #e3e9e7;border-radius:12px}
+.booking-list-card{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:18px;padding:18px;background:#fff;border:1px solid #e3e9e7;border-radius:12px}
 .booking-list-card h2{font:700 17px Manrope,sans-serif;margin:5px 0}
 .booking-list-card p{font-size:13px;color:#718483;margin:5px 0}
 .booking-status{font-size:11px;font-weight:700;text-transform:capitalize;border-radius:999px;background:#fff0e2;color:#9c4e1e;padding:6px 10px}
 .booking-status-verified{background:#e3f1ef;color:#07565b}
 .booking-status-cancelled{background:#fce9e8;color:#963e39}
-.booking-list-card>div:last-child{display:flex;flex-direction:column;align-items:flex-end;gap:14px}
+.booking-list-card>div:nth-child(2){display:flex;flex-direction:column;align-items:flex-end;gap:14px}
 .booking-cancel-button{border:0;padding:0;background:transparent;color:#963e39;font:600 13px 'DM Sans';cursor:pointer}
 .booking-cancel-button:disabled{opacity:.6;cursor:wait}
+.booking-documents{flex-basis:100%;padding-top:12px;border-top:1px solid #e7eeec}
+.booking-documents h3,.booking-documents h4{margin:0 0 9px;font:700 14px Manrope,sans-serif;color:#264244}
+.booking-documents ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.booking-documents li{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:#526b6b}
+.booking-documents .secondary-button{padding:7px 11px;font-size:12px}
 
 .admin-page{max-width:1180px;min-height:65vh;padding-top:38px;padding-bottom:58px}
 .admin-page h1{font:800 clamp(28px,3.2vw,40px)/1.2 Manrope,sans-serif;letter-spacing:-1px;margin:0 0 9px}

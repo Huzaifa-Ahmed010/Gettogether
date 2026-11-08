@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createBooking, DIRECTORY_PAGE_SIZE, getFacility, getFacilityServices, type Booking, type Facility, type Service } from "../api/client";
+import { createBooking, DIRECTORY_PAGE_SIZE, getFacility, getFacilityServices, uploadBookingDocuments, type Booking, type Facility, type Service } from "../api/client";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
 
@@ -21,6 +21,11 @@ export default function FacilityDetailPage() {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [bookingError, setBookingError] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [selectedDocuments, setSelectedDocuments] = useState<File[]>([]);
+  const [documentSelectionError, setDocumentSelectionError] = useState("");
+  const [documentUploadError, setDocumentUploadError] = useState("");
+  const [documentsUploaded, setDocumentsUploaded] = useState(false);
+  const [documentsUploading, setDocumentsUploading] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +61,7 @@ export default function FacilityDetailPage() {
 
   async function submitBooking(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedServiceId || !appointmentAt) return;
+    if (!selectedServiceId || !appointmentAt || documentSelectionError) return;
     setBookingError("");
     setBookingLoading(true);
     try {
@@ -67,10 +72,42 @@ export default function FacilityDetailPage() {
         payment_method: "physical",
       });
       setBooking(created);
+      if (selectedDocuments.length > 0) {
+        await uploadDocuments(created.id);
+      }
     } catch (reason) {
       setBookingError(reason instanceof Error ? reason.message.replace(/^API error \d+: /, "") : "Unable to create your booking.");
     } finally {
       setBookingLoading(false);
+    }
+  }
+
+  async function uploadDocuments(bookingId: number) {
+    setDocumentsUploading(true);
+    setDocumentUploadError("");
+    try {
+      await uploadBookingDocuments(bookingId, selectedDocuments);
+      setDocumentsUploaded(true);
+    } catch (reason) {
+      setDocumentUploadError(reason instanceof Error
+        ? reason.message.replace(/^API error \d+: /, "")
+        : "The appointment was created, but the documents could not be uploaded.");
+    } finally {
+      setDocumentsUploading(false);
+    }
+  }
+
+  function selectDocuments(files: FileList | null) {
+    const selected = Array.from(files ?? []);
+    setSelectedDocuments(selected);
+    if (selected.length > 5) {
+      setDocumentSelectionError("Choose no more than 5 documents.");
+    } else if (selected.some((file) => file.size > 10 * 1024 * 1024)) {
+      setDocumentSelectionError("Each document must be 10 MB or smaller.");
+    } else if (selected.some((file) => !["application/pdf", "image/jpeg", "image/png"].includes(file.type))) {
+      setDocumentSelectionError("Choose PDF, JPEG, or PNG files only.");
+    } else {
+      setDocumentSelectionError("");
     }
   }
 
@@ -98,12 +135,24 @@ export default function FacilityDetailPage() {
             <p>Your booking reference is <strong>#{booking.id}</strong>. Show this one-time check-in code to the facility staff:</p>
             <strong className="booking-code">{booking.verification_code}</strong>
             <p>Payment is due at the facility. View the appointment in <Link to="/bookings">My bookings</Link>.</p>
+            {selectedDocuments.length > 0 && (documentsUploaded
+              ? <p>{selectedDocuments.length} document{selectedDocuments.length === 1 ? "" : "s"} uploaded for this appointment.</p>
+              : <div>
+                <p>{documentsUploading ? "Uploading your documents…" : "Your appointment is created, but the selected documents have not uploaded yet."}</p>
+                {documentUploadError && <p className="account-error" role="alert">{documentUploadError}</p>}
+                {!documentsUploading && <button type="button" className="secondary-button" onClick={() => uploadDocuments(booking.id)}>Retry document upload</button>}
+              </div>)}
           </div> : services.length === 0 ? <p>This center has no bookable services listed yet.</p> : <form className="account-form" onSubmit={submitBooking}>
-            <label>Service<select required value={selectedServiceId} onChange={(event) => setSelectedServiceId(event.target.value)}><option value="">Choose a service</option>{services.map((service) => <option value={service.id} key={service.id}>{service.name} · ₹{(service.fee_paise / 100).toFixed(2)}</option>)}</select></label>
+            <label>Doctor or service<select required value={selectedServiceId} onChange={(event) => setSelectedServiceId(event.target.value)}><option value="">Choose a doctor or service</option>{services.map((service) => <option value={service.id} key={service.id}>{service.name}{service.provider_name ? ` — ${service.provider_name}` : ""} · ₹{(service.fee_paise / 100).toFixed(2)}</option>)}</select></label>
             <label>Appointment date and time<input type="datetime-local" required min={minimumAppointment} value={appointmentAt} onChange={(event) => setAppointmentAt(event.target.value)} /></label>
+            <label>Previous visit reports or prescriptions (optional)
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple onChange={(event) => selectDocuments(event.currentTarget.files)} />
+            </label>
+            <p>Up to 5 PDF, JPEG, or PNG files; maximum 10 MB each. Documents are stored with this appointment in the database and can be accessed by you and staff assigned to this facility. Use fake/test documents only; this service is not approved for real medical records.</p>
+            {documentSelectionError && <p className="account-error" role="alert">{documentSelectionError}</p>}
             <p>Pay at the facility after your appointment. Online payment is not available yet.</p>
             {bookingError && <p className="account-error" role="alert">{bookingError}</p>}
-            <button className="primary-link" disabled={bookingLoading}>{bookingLoading ? "Submitting…" : "Request appointment"}</button>
+            <button className="primary-link" disabled={bookingLoading || Boolean(documentSelectionError)}>{bookingLoading ? "Submitting…" : "Request appointment"}</button>
           </form>}
         </section>
       </> : <p className="directory-meta" role="status">Loading facility…</p>}

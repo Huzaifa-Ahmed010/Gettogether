@@ -24,7 +24,14 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
 
     engine = create_engine(database_url)
     inspector = inspect(engine)
-    assert {"users", "bookings", "email_verifications", "password_resets", "audit_events"} <= set(
+    assert {
+        "users",
+        "bookings",
+        "booking_documents",
+        "email_verifications",
+        "password_resets",
+        "audit_events",
+    } <= set(
         inspector.get_table_names()
     )
     assert "token_version" in {column["name"] for column in inspector.get_columns("users")}
@@ -34,7 +41,7 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
     }
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0005_booking_payment_collection"
+            "0006_booking_documents"
         )
         assert {
             "payment_due_paise",
@@ -44,6 +51,16 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
             "payment_collected_at",
             "payment_reference",
         } <= {column["name"] for column in inspector.get_columns("bookings")}
+        assert {
+            "booking_id",
+            "uploaded_by_user_id",
+            "filename",
+            "media_type",
+            "size_bytes",
+            "sha256",
+            "content",
+            "uploaded_at",
+        } <= {column["name"] for column in inspector.get_columns("booking_documents")}
     engine.dispose()
 
 
@@ -128,6 +145,7 @@ def test_migrations_adopt_legacy_schema_without_dropping_users(tmp_path, monkeyp
         "payment_collected_at",
         "payment_reference",
     } <= {column["name"] for column in inspector.get_columns("bookings")}
+    assert "booking_documents" in inspector.get_table_names()
     with engine.connect() as migrated:
         user = migrated.execute(
             text("SELECT id, email, role, email_verified, token_version, phone FROM users WHERE id = 7")

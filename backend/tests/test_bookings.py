@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.api.routes.auth import create_access_token
 from app.db.session import SessionLocal
 from app.main import app
-from app.models import AuditEvent, Booking, Facility, Service, User
+from app.models import AuditEvent, Booking, BookingDocument, Facility, Service, User
 
 
 def add_user(db, role, *, facility_id=None):
@@ -115,9 +115,11 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 original_email = patient.email
                 patient.email = f"renamed-{original_email}"
                 db.commit()
+
             patient_bookings = client.get("/api/v1/bookings", headers=patient_headers)
             assert patient_bookings.status_code == 200
             assert patient_bookings.json()[0]["id"] == booking_id
+            assert patient_bookings.json()[0]["provider_name"] == "Dr Example"
             assert client.get(
                 f"/api/v1/bookings/{booking_id}",
                 headers=patient_headers,
@@ -180,6 +182,7 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
             assert paid_booking["payment_collector_name"] == "Test facility_staff"
             assert paid_booking["payment_reference"] == "receipt-123"
             assert paid_booking["payment_amount_paise"] == 10000
+            assert paid_booking["provider_name"] == "Dr Example"
             assert client.post(
                 f"/api/v1/bookings/{booking_id}/payment",
                 json={"reference": "duplicate"},
@@ -266,6 +269,192 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                         user = db.get(User, user_id)
                         if user:
                             db.delete(user)
+                if facility_id:
+                    db.query(Service).filter(Service.facility_id == facility_id).delete()
+                    facility = db.get(Facility, facility_id)
+                    if facility:
+                        db.delete(facility)
+                db.commit()
+
+def test_booking_documents_are_private_validated_and_downloadable(platform_admin_headers):
+    suffix = uuid4().hex
+    facility_id = booking_id = None
+    user_ids: list[int] = []
+
+    with TestClient(app) as client:
+        try:
+            facility_response = client.post(
+                "/api/v1/facilities",
+                json={
+                    "name": f"Document Center {suffix}",
+                    "facility_type": "hospital",
+                    "address": "2 Document Way",
+                    "city": "Document City",
+                    "phone": "555-0120",
+                },
+                headers=platform_admin_headers,
+            )
+            assert facility_response.status_code == 201
+            facility_id = facility_response.json()["id"]
+            service_response = client.post(
+                f"/api/v1/facilities/{facility_id}/services",
+                json={
+                    "name": f"Consultation {suffix}",
+                    "category": "Primary care",
+                    "service_type": "doctor",
+                    "provider_name": "Dr Document",
+                    "fee_paise": 0,
+                },
+                headers=platform_admin_headers,
+            )
+            assert service_response.status_code == 201
+
+            with SessionLocal() as db:
+                patient, patient_headers = add_user(db, "patient")
+                staff, staff_headers = add_user(db, "facility_staff", facility_id=facility_id)
+                other_staff, other_staff_headers = add_user(db, "facility_staff")
+                other_patient, other_patient_headers = add_user(db, "patient")
+                user_ids = [patient.id, staff.id, other_staff.id, other_patient.id]
+
+            created = client.post(
+                "/api/v1/bookings",
+                json={
+                    "facility_id": facility_id,
+                    "service_id": service_response.json()["id"],
+                    "appointment_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+                    "payment_method": "physical",
+                },
+                headers=patient_headers,
+            )
+            assert created.status_code == 201
+            booking_id = created.json()["id"]
+
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}/documents",
+                headers=other_patient_headers,
+            ).status_code == 404
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}/documents",
+                headers=other_staff_headers,
+            ).status_code == 404
+            assert client.post(
+                f"/api/v1/bookings/{booking_id}/documents",
+                files=[("files", ("not-owner.pdf", b"%PDF-test", "application/pdf"))],
+                headers=other_staff_headers,
+            ).status_code == 404
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}/documents",
+                headers=platform_admin_headers,
+            ).status_code == 404
+
+            pdf_content = b"%PDF-1.7\nfake test report"
+            jpeg_content = b"\xff\xd8\xfffake jpeg test"
+            png_content = b"\x89PNG\r\n\x1a\nfake png test"
+            uploaded = client.post(
+                f"/api/v1/bookings/{booking_id}/documents",
+                files=[
+                    ("files", ("visit-report.pdf", pdf_content, "application/pdf")),
+                    ("files", ("previous-visit.jpg", jpeg_content, "image/jpeg")),
+                    ("files", ("prescription.png", png_content, "image/png")),
+                ],
+                headers=patient_headers,
+            )
+            assert uploaded.status_code == 201
+            document = next(
+                item for item in uploaded.json() if item["filename"] == "visit-report.pdf"
+            )
+            assert document["filename"] == "visit-report.pdf"
+            assert document["size_bytes"] == len(pdf_content)
+            assert "content" not in document
+            assert "uploaded_by_user_id" not in document
+            assert {item["media_type"] for item in uploaded.json()} == {
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+            }
+
+            patient_list = client.get(
+                f"/api/v1/bookings/{booking_id}/documents",
+                headers=patient_headers,
+            )
+            assert patient_list.status_code == 200
+            staff_list = client.get(
+                f"/api/v1/bookings/{booking_id}/documents",
+                headers=staff_headers,
+            )
+            assert staff_list.status_code == 200
+            assert staff_list.json()[0]["id"] == document["id"]
+
+            download = client.get(
+                f"/api/v1/bookings/{booking_id}/documents/{document['id']}",
+                headers=staff_headers,
+            )
+            assert download.status_code == 200
+            assert download.content == pdf_content
+            assert download.headers["content-type"] == "application/pdf"
+            assert download.headers["x-content-type-options"] == "nosniff"
+            assert download.headers["cache-control"] == "private, no-store"
+            patient_download = client.get(
+                f"/api/v1/bookings/{booking_id}/documents/{document['id']}",
+                headers=patient_headers,
+            )
+            assert patient_download.status_code == 200
+            assert patient_download.content == pdf_content
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}/documents/{document['id']}",
+                headers=other_staff_headers,
+            ).status_code == 404
+
+            bad_signature = client.post(
+                f"/api/v1/bookings/{booking_id}/documents",
+                files=[("files", ("fake.pdf", b"not a pdf", "application/pdf"))],
+                headers=patient_headers,
+            )
+            assert bad_signature.status_code == 422
+            unsupported = client.post(
+                f"/api/v1/bookings/{booking_id}/documents",
+                files=[("files", ("script.txt", b"hello", "text/plain"))],
+                headers=patient_headers,
+            )
+            assert unsupported.status_code == 415
+            too_large = client.post(
+                f"/api/v1/bookings/{booking_id}/documents",
+                files=[
+                    (
+                        "files",
+                        ("large.pdf", b"%PDF-" + b"x" * (10 * 1024 * 1024), "application/pdf"),
+                    )
+                ],
+                headers=patient_headers,
+            )
+            assert too_large.status_code == 413
+            too_many = client.post(
+                f"/api/v1/bookings/{booking_id}/documents",
+                files=[
+                    ("files", (f"extra-{index}.pdf", b"%PDF-test", "application/pdf"))
+                    for index in range(3)
+                ],
+                headers=patient_headers,
+            )
+            assert too_many.status_code == 413
+
+            with SessionLocal() as db:
+                assert db.query(BookingDocument).filter(
+                    BookingDocument.booking_id == booking_id
+                ).count() == 3
+                assert db.query(AuditEvent).filter(
+                    AuditEvent.action == "booking.document_downloaded",
+                    AuditEvent.resource_id == document["id"],
+                ).count() == 2
+        finally:
+            with SessionLocal() as db:
+                if booking_id:
+                    db.query(Booking).filter(Booking.id == booking_id).delete()
+                for user_id in user_ids:
+                    db.query(AuditEvent).filter(AuditEvent.actor_user_id == user_id).delete()
+                    user = db.get(User, user_id)
+                    if user:
+                        db.delete(user)
                 if facility_id:
                     db.query(Service).filter(Service.facility_id == facility_id).delete()
                     facility = db.get(Facility, facility_id)

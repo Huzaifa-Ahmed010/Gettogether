@@ -8,6 +8,7 @@ React/Vite UI → `/api/v1/*` FastAPI routers → service/business logic → SQL
 - `backend/app/core/config.py`: environment-backed configuration.
 - `backend/app/db/session.py`: engine, session factory, and dependency.
 - `backend/app/models/entities.py`: facility, service, booking, account, password reset, and audit database entities.
+- `backend/app/api/routes/bookings.py`: additionally enforces private patient-document upload/list/download permissions and stores document bytes in the database.
 - `backend/migrations/`: versioned Alembic schema migrations; apply before deployment.
 - `backend/app/schemas/`: request/response validation.
 - `backend/app/api/routes/facilities.py`: public discovery and role-protected facility/service creation endpoints.
@@ -20,15 +21,16 @@ React/Vite UI → `/api/v1/*` FastAPI routers → service/business logic → SQL
 - `frontend/src/pages/HomePage.tsx`: initial responsive discovery page based on supplied reference.
 
 ## Core booking workflow
-1. An authenticated patient chooses a facility, service, date/time, and pay-at-facility.
+1. An authenticated patient chooses a facility, service/provider name, date/time, pay-at-facility, and optionally attaches up to five PDF/JPEG/PNG documents.
 2. API validates that the service belongs to the facility and that the appointment time is in the future.
-3. API creates an owned booking and returns a one-time six-digit check-in code. Pay-at-facility begins as `unpaid`.
+3. API creates an owned booking and returns a one-time six-digit check-in code. Pay-at-facility begins as `unpaid`. Uploaded files are associated with the booking and readable by the patient and the facility's assigned staff only.
 4. For online payment, create a payment order through a provider and update payment state only after verifying the provider's signed webhook.
 5. Authenticated assigned staff submit the code. Server checks facility authorization and booking status, then marks the code used.
 
 ## Production requirements still outstanding
 - Add MFA and HttpOnly secure cookie sessions; bearer tokens currently remain in browser local storage. Password resets revoke all existing bearer tokens.
 - Add a managed staff invitation process, audit sensitive reads, tamper-evident audit export, and retention policies. Platform-admin bootstrap is operator CLI-managed; platform admins can assign facility-staff access in the dashboard.
+- Appointment files are stored as database binary data. Malware scanning, application-level file encryption, retention/deletion workflows, and compliance approval remain outstanding; use test documents only.
 - Add doctor schedules, slot locking/transactions, cancellation/reschedule rules, and conflict prevention.
 - Use Alembic migrations; schema changes are not applied during API startup.
 - Add payment-provider webhooks and idempotency keys; never trust payment state from a frontend request.
@@ -43,6 +45,7 @@ React/Vite UI → `/api/v1/*` FastAPI routers → service/business logic → SQL
 | Email/password signup and sign-in | Implemented | Email verification is temporarily deferred. |
 | Facility/service discovery | Implemented | Public directory endpoints use bounded, offset-based pages. |
 | Booking requests | Partial | Future date/time is accepted, but provider schedules and slot capacity are not reserved. |
+| Appointment documents | Partial | Optional PDF/JPEG/PNG uploads are database-stored and restricted to the patient and assigned facility staff; no malware scanning or health-data approval. |
 | Payment | Not implemented | Pay-at-facility is recorded as unpaid; no payment collection is available. |
 | Care navigator | Implemented as directory search | It is not an Ollama or medical-advice assistant. |
 | Facility staff management | Implemented | Platform admins can assign staff in the dashboard; CLI remains for initial platform-admin bootstrap. |

@@ -1,9 +1,11 @@
 import hashlib
 import hmac
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,10 +13,11 @@ from app.api.routes.auth import get_current_user
 from app.core.audit import record_audit_event
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Booking, Facility, Service, User
+from app.models import Booking, BookingDocument, Facility, Service, User
 from app.schemas.booking import (
     BookingCreate,
     BookingCreated,
+    BookingDocumentRead,
     BookingRead,
     BookingSummary,
     PaymentCollectionRequest,
@@ -23,6 +26,14 @@ from app.schemas.booking import (
 )
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
+MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
+MAX_DOCUMENTS_PER_BOOKING = 5
+DOCUMENT_TYPES = {
+    ".pdf": ("application/pdf", b"%PDF-"),
+    ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+}
 
 
 def hash_booking_code(code: str) -> str:
@@ -44,6 +55,19 @@ def require_facility_access(user: User, facility_id: int) -> None:
     if user.role == "facility_staff" and user.facility_id == facility_id:
         return
     raise HTTPException(403, "You are not authorized to manage bookings for this facility")
+
+
+def require_document_access(user: User, booking: Booking) -> None:
+    if user.role == "patient" and booking.patient_user_id == user.id:
+        return
+    if user.role == "facility_staff" and user.facility_id == booking.facility_id:
+        return
+    raise HTTPException(404, "Booking not found")
+
+
+def safe_document_filename(filename: str) -> str:
+    basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    return re.sub(r"[^A-Za-z0-9._-]", "_", basename)[:255] or "document"
 
 
 @router.post("", response_model=BookingCreated, status_code=201)
@@ -103,13 +127,135 @@ def create_booking(
     )
 
 
+@router.post("/{booking_id}/documents", response_model=list[BookingDocumentRead], status_code=201)
+def upload_booking_documents(
+    booking_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    booking = (
+        db.query(Booking)
+        .filter(
+            Booking.id == booking_id,
+            Booking.patient_user_id == user.id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    if booking.status != "booked":
+        raise HTTPException(409, "Documents can only be uploaded to an active appointment request")
+    if not files:
+        raise HTTPException(422, "Select at least one document to upload")
+    existing_count = db.query(BookingDocument.id).filter(
+        BookingDocument.booking_id == booking.id
+    ).count()
+    if existing_count + len(files) > MAX_DOCUMENTS_PER_BOOKING:
+        raise HTTPException(
+            413,
+            f"A maximum of {MAX_DOCUMENTS_PER_BOOKING} documents is allowed per appointment.",
+        )
+
+    pending_documents: list[BookingDocument] = []
+    for upload in files:
+        filename = safe_document_filename(upload.filename or "")
+        extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        document_type = DOCUMENT_TYPES.get(extension)
+        if document_type is None:
+            raise HTTPException(415, "Only PDF, JPEG, and PNG documents are accepted")
+        media_type, signature = document_type
+        content = upload.file.read(MAX_DOCUMENT_SIZE + 1)
+        if len(content) > MAX_DOCUMENT_SIZE:
+            raise HTTPException(413, "Each document must be 10 MB or smaller")
+        if not content.startswith(signature):
+            raise HTTPException(422, f"{filename} does not match its file type")
+        if upload.content_type not in {media_type, "application/octet-stream"}:
+            raise HTTPException(415, f"{filename} has an unsupported content type")
+        pending_documents.append(
+            BookingDocument(
+                booking_id=booking.id,
+                uploaded_by_user_id=user.id,
+                filename=filename,
+                media_type=media_type,
+                size_bytes=len(content),
+                sha256=hashlib.sha256(content).hexdigest(),
+                content=content,
+            )
+        )
+
+    db.add_all(pending_documents)
+    db.flush()
+    record_audit_event(db, user, "booking.documents_uploaded", "booking", booking.id)
+    db.commit()
+    for document in pending_documents:
+        db.refresh(document)
+    return pending_documents
+
+
+@router.get("/{booking_id}/documents", response_model=list[BookingDocumentRead])
+def list_booking_documents(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    require_document_access(user, booking)
+    documents = (
+        db.query(BookingDocument)
+        .filter(BookingDocument.booking_id == booking.id)
+        .order_by(BookingDocument.uploaded_at, BookingDocument.id)
+        .all()
+    )
+    record_audit_event(db, user, "booking.documents_listed", "booking", booking.id)
+    db.commit()
+    return documents
+
+
+@router.get("/{booking_id}/documents/{document_id}")
+def download_booking_document(
+    booking_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    booking = db.get(Booking, booking_id)
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    require_document_access(user, booking)
+    document = (
+        db.query(BookingDocument)
+        .filter(
+            BookingDocument.id == document_id,
+            BookingDocument.booking_id == booking.id,
+        )
+        .first()
+    )
+    if document is None:
+        raise HTTPException(404, "Document not found")
+    record_audit_event(db, user, "booking.document_downloaded", "booking_document", document.id)
+    db.commit()
+    return Response(
+        content=document.content,
+        media_type=document.media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{document.filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("", response_model=list[BookingSummary])
 def list_my_bookings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     rows = (
-        db.query(Booking, Facility.name, Service.name)
+        db.query(Booking, Facility.name, Service.name, Service.provider_name)
         .join(Facility, Booking.facility_id == Facility.id)
         .join(Service, Booking.service_id == Service.id)
         .filter(Booking.patient_user_id == user.id)
@@ -121,8 +267,9 @@ def list_my_bookings(
             **BookingRead.model_validate(booking).model_dump(),
             "facility_name": facility_name,
             "service_name": service_name,
+            "provider_name": provider_name,
         }
-        for booking, facility_name, service_name in rows
+        for booking, facility_name, service_name, provider_name in rows
     ]
 
 

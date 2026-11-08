@@ -28,6 +28,7 @@ The application code has production-oriented controls, but this repository does 
 ## Operational and privacy gates
 
 - Configure database backups, retention, encryption, point-in-time recovery, and perform a restore drill before onboarding users. A running database is not a backup.
+- Appointment files are stored in PostgreSQL binary columns. Plan database capacity, encrypted backups, retention/deletion, and restore testing accordingly. Upload validation is not malware scanning; files must remain test-only until the organization approves the security, privacy, and legal controls for actual health records.
 - Configure uptime/error/latency monitoring, database and Redis capacity alerts, email delivery alerts, centralized access-controlled logs, and an incident-response contact.
 - Define user consent, privacy notice, data minimization, access/deletion requests, health-data retention/deletion, audit-log retention/export, and breach response with qualified privacy/legal counsel for the actual operating jurisdiction.
 - Obtain an independent security review and penetration test for the deployed configuration. The audit table is not tamper-evident; export/immutably retain it if required.
@@ -36,6 +37,7 @@ The application code has production-oriented controls, but this repository does 
 ## Product/security gaps not solved by infrastructure setup
 
 - MFA and HttpOnly/Secure cookie sessions are not implemented; bearer tokens are stored in browser local storage.
+- Appointment document uploads support PDF/JPEG/PNG and are restricted to the patient and staff assigned to the facility. The app does not yet provide malware scanning, application-level file encryption, or a full healthcare data-governance workflow; do not accept real patient documents.
 - Appointment schedules, capacity/slot locking, duplicate booking prevention, and rescheduling are not implemented.
 - Payments are not collected. Bookings remain unpaid and payment-at-facility is only a selection; add provider integration and verified server-side webhooks before charging.
 - Platform admins can assign facility staff in the dashboard; first platform-admin bootstrap is operator CLI-managed. Add an audited invitation/onboarding process before delegating staff administration.

@@ -42,8 +42,8 @@ async function request<T>(
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...(accessToken ? { Authorization: "Bearer " + accessToken } : {}),
       ...options.headers,
     },
   });
@@ -168,6 +168,16 @@ export type Booking = {
   verification_code?: string;
   facility_name?: string;
   service_name?: string;
+  provider_name?: string;
+};
+
+export type BookingDocument = {
+  id: number;
+  filename: string;
+  media_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_at: string;
 };
 
 export type AdminDashboard = {
@@ -196,6 +206,7 @@ export type AdminBooking = {
   patient_email_masked: string;
   facility_name: string;
   service_name: string;
+  provider_name: string;
 };
 
 export type AdminUser = {
@@ -220,6 +231,43 @@ export function createBooking(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function uploadBookingDocuments(bookingId: number, files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  return request<BookingDocument[]>(`/bookings/${bookingId}/documents`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function getBookingDocuments(bookingId: number) {
+  return request<BookingDocument[]>(`/bookings/${bookingId}/documents`);
+}
+
+export async function downloadBookingDocument(bookingId: number, file: BookingDocument) {
+  const accessToken = getStoredAccessToken();
+  const response = await fetch(`${API_BASE}/bookings/${bookingId}/documents/${file.id}`, {
+    headers: accessToken ? { Authorization: "Bearer " + accessToken } : {},
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    let message = body;
+    try {
+      const error = JSON.parse(body) as { detail?: unknown };
+      if (typeof error.detail === "string") message = error.detail;
+    } catch {
+      message = body;
+    }
+    throw new Error(`API error ${response.status}: ${message}`);
+  }
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const link = window.document.createElement("a");
+  link.href = objectUrl;
+  link.download = file.filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 export function getMyBookings() {

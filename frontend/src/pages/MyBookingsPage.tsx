@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { cancelBooking, getMyBookings, type Booking } from "../api/client";
+import {
+  cancelBooking,
+  downloadBookingDocument,
+  getBookingDocuments,
+  getMyBookings,
+  type Booking,
+  type BookingDocument,
+} from "../api/client";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
 
@@ -11,6 +18,40 @@ export default function MyBookingsPage() {
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [documentsByBooking, setDocumentsByBooking] = useState<Record<number, BookingDocument[]>>({});
+  const [documentsLoaded, setDocumentsLoaded] = useState<Record<number, boolean>>({});
+  const [documentsLoadingId, setDocumentsLoadingId] = useState<number | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | null>(null);
+
+  async function loadDocuments(bookingId: number) {
+    setActionError("");
+    setDocumentsLoadingId(bookingId);
+    try {
+      const documents = await getBookingDocuments(bookingId);
+      setDocumentsByBooking((current) => ({ ...current, [bookingId]: documents }));
+      setDocumentsLoaded((current) => ({ ...current, [bookingId]: true }));
+    } catch (reason) {
+      setActionError(reason instanceof Error
+        ? reason.message.replace(/^API error \d+: /, "")
+        : "Unable to load appointment documents.");
+    } finally {
+      setDocumentsLoadingId(null);
+    }
+  }
+
+  async function downloadDocument(bookingId: number, file: BookingDocument) {
+    setActionError("");
+    setDownloadingDocumentId(file.id);
+    try {
+      await downloadBookingDocument(bookingId, file);
+    } catch (reason) {
+      setActionError(reason instanceof Error
+        ? reason.message.replace(/^API error \d+: /, "")
+        : "Unable to download this document.");
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  }
 
   async function cancelAppointment(booking: Booking) {
     if (!window.confirm(`Cancel your appointment request #${booking.id}?`)) return;
@@ -51,8 +92,18 @@ export default function MyBookingsPage() {
         : loading ? <p className="directory-meta" role="status">Loading your bookings…</p>
           : error ? <p className="notice" role="alert">{error}</p>
             : bookings.length ? <>{actionError && <p className="account-error" role="alert">{actionError}</p>}<div className="booking-list">{bookings.map((booking) => <article className="booking-list-card" key={booking.id}>
-              <div><span className="facility-type">BOOKING #{booking.id}</span><h2>{booking.service_name}</h2><p>{booking.facility_name}</p><p>{new Date(booking.appointment_at).toLocaleString()}</p></div>
+              <div><span className="facility-type">BOOKING #{booking.id}</span><h2>{booking.service_name}</h2>{booking.provider_name && <p>{booking.provider_name}</p>}<p>{booking.facility_name}</p><p>{new Date(booking.appointment_at).toLocaleString()}</p></div>
               <div><span className={`booking-status booking-status-${booking.status}`}>{booking.status}</span>{booking.status === "booked" && new Date(booking.appointment_at).getTime() > Date.now() && <button type="button" className="booking-cancel-button" disabled={cancellingId === booking.id} onClick={() => cancelAppointment(booking)}>{cancellingId === booking.id ? "Cancelling…" : "Cancel appointment"}</button>}</div>
+              <section className="booking-documents">
+                <h3>Reports and prescriptions</h3>
+                {!documentsLoaded[booking.id] ? <button type="button" className="secondary-button" disabled={documentsLoadingId === booking.id} onClick={() => loadDocuments(booking.id)}>{documentsLoadingId === booking.id ? "Loading…" : "View documents"}</button>
+                  : documentsByBooking[booking.id]?.length
+                    ? <ul>{documentsByBooking[booking.id].map((file) => <li key={file.id}>
+                      <span>{file.filename} · {(file.size_bytes / (1024 * 1024)).toFixed(2)} MB</span>
+                      <button type="button" className="secondary-button" disabled={downloadingDocumentId === file.id} onClick={() => downloadDocument(booking.id, file)}>{downloadingDocumentId === file.id ? "Downloading…" : "Download"}</button>
+                    </li>)}</ul>
+                    : <p>No documents uploaded for this appointment.</p>}
+              </section>
             </article>)}</div></>
               : <div className="empty-state"><b>No appointments yet</b><span>Find a service and request an appointment at a partner center.</span><Link to="/doctors">Browse doctors</Link></div>}
     </main>

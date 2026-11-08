@@ -231,7 +231,7 @@ def list_managed_bookings(
 ):
     require_directory_access(user)
     query = (
-        db.query(Booking, Facility.name, Service.name)
+        db.query(Booking, Facility.name, Service.name, Service.provider_name)
         .join(Facility, Booking.facility_id == Facility.id)
         .join(Service, Booking.service_id == Service.id)
         .outerjoin(User, Booking.payment_collected_by_user_id == User.id)
@@ -248,6 +248,7 @@ def list_managed_bookings(
         Booking,
         Facility.name,
         Service.name,
+        Service.provider_name,
         User.name,
     ).order_by(Booking.appointment_at.desc()).offset(offset).limit(limit).all()
     return [
@@ -270,8 +271,9 @@ def list_managed_bookings(
             "patient_email_masked": mask_email(booking.patient_email),
             "facility_name": facility_name,
             "service_name": service_name,
+            "provider_name": provider_name,
         }
-        for booking, facility_name, service_name, collector_name in rows
+        for booking, facility_name, service_name, provider_name, collector_name in rows
     ]
 
 
@@ -323,6 +325,7 @@ def cancel_managed_booking(
         "patient_email_masked": mask_email(booking.patient_email),
         "facility_name": facility.name,
         "service_name": service.name,
+        "provider_name": service.provider_name,
     }
 
 

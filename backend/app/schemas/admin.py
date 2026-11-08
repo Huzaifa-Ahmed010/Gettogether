@@ -84,6 +84,7 @@ class AdminBookingRead(BaseModel):
     patient_email_masked: str
     facility_name: str
     service_name: str
+    provider_name: str
 
 
 class AdminUserRead(BaseModel):

@@ -36,6 +36,16 @@ class BookingCreated(BookingRead):
 class BookingSummary(BookingRead):
     facility_name: str
     service_name: str
+    provider_name: str
+
+class BookingDocumentRead(BaseModel):
+    id: int
+    filename: str
+    media_type: str
+    size_bytes: int
+    sha256: str
+    uploaded_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
 class VerifyRequest(BaseModel):
     code: str = Field(pattern="^[0-9]{6}$")
