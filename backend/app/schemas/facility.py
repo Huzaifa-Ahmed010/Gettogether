@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class FacilityCreate(BaseModel):
     name: str = Field(min_length=2, max_length=180)
@@ -6,6 +8,17 @@ class FacilityCreate(BaseModel):
     address: str = Field(min_length=5)
     city: str = Field(min_length=2, max_length=100)
     phone: str = ""
+    description: str = Field(default="", max_length=2000)
+    timezone: str = Field(default="Asia/Kolkata", min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise ValueError("timezone must be a valid IANA timezone") from error
+        return value
 
 class FacilityRead(FacilityCreate):
     id: int

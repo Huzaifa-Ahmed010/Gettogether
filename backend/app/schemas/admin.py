@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class FacilityUpdate(BaseModel):
@@ -10,7 +11,19 @@ class FacilityUpdate(BaseModel):
     address: str | None = Field(default=None, min_length=5)
     city: str | None = Field(default=None, min_length=2, max_length=100)
     phone: str | None = Field(default=None, max_length=30)
+    description: str | None = Field(default=None, max_length=2000)
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)
     is_active: bool | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except (ValueError, ZoneInfoNotFoundError) as error:
+                raise ValueError("timezone must be a valid IANA timezone") from error
+        return value
 
     @model_validator(mode="after")
     def validate_patch(self):
@@ -47,10 +60,12 @@ class UserAdminUpdate(BaseModel):
     def validate_patch(self):
         if not self.model_fields_set:
             raise ValueError("At least one field must be provided")
-        if any(getattr(self, field) is None for field in self.model_fields_set):
+        if any(
+            getattr(self, field) is None
+            for field in self.model_fields_set
+            if field != "facility_id"
+        ):
             raise ValueError("Fields cannot be null")
-        if self.role == "facility_staff" and self.facility_id is None:
-            raise ValueError("Assigning facility staff requires a facility_id")
         if self.role == "patient" and self.facility_id is not None:
             raise ValueError("Patient accounts cannot be assigned to a facility")
         if "facility_id" in self.model_fields_set and self.role != "facility_staff":
@@ -80,6 +95,7 @@ class AdminBookingRead(BaseModel):
     payment_collector_name: str | None
     payment_reference: str | None
     status: str
+    rejection_reason: str | None = None
     patient_name: str
     patient_email_masked: str
     facility_name: str

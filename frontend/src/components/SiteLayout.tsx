@@ -46,8 +46,9 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
         <NavLink to="/diagnostics">Diagnostics</NavLink>
         <NavLink to="/assistant">Assistant</NavLink>
         <Link to="/#about">About</Link>
-        {user && user.role !== "patient" && <NavLink to="/admin">Manage</NavLink>}
-        {user && <NavLink to="/bookings">My bookings</NavLink>}
+        {user?.role === "platform_admin" && <NavLink to="/platform">Platform admin</NavLink>}
+        {user?.role === "facility_staff" && <NavLink to="/facility">Facility workspace</NavLink>}
+        {user?.role === "patient" && <NavLink to="/bookings">My bookings</NavLink>}
       </nav>
       <Link className="login-link" to="/login">{user ? user.name : "Sign in"}</Link>
     </header>

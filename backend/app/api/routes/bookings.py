@@ -9,14 +9,17 @@ from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.booking_code_delivery import decrypt_booking_code, encrypt_booking_code
 from app.api.routes.auth import get_current_user
 from app.core.audit import record_audit_event
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Booking, BookingDocument, Facility, Service, User
 from app.schemas.booking import (
+    BookingCheckInCode,
     BookingCreate,
     BookingCreated,
+    BookingDecisionRequest,
     BookingDocumentRead,
     BookingRead,
     BookingSummary,
@@ -24,6 +27,7 @@ from app.schemas.booking import (
     VerifyRead,
     VerifyRequest,
 )
+from app.services.subscriptions import require_facility_entitlement
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
@@ -50,8 +54,6 @@ def new_code(db: Session) -> str:
 
 
 def require_facility_access(user: User, facility_id: int) -> None:
-    if user.role == "platform_admin":
-        return
     if user.role == "facility_staff" and user.facility_id == facility_id:
         return
     raise HTTPException(403, "You are not authorized to manage bookings for this facility")
@@ -87,7 +89,7 @@ def create_booking(
     if payload.payment_method != "physical":
         raise HTTPException(422, "Only payment at the facility is currently available")
 
-    code = new_code(db)
+    require_facility_entitlement(db, facility.id, operational_write=True)
     booking = Booking(
         patient_user_id=user.id,
         patient_name=user.name,
@@ -99,7 +101,7 @@ def create_booking(
         payment_status="unpaid" if service.fee_paise else "not_required",
         payment_due_paise=service.fee_paise,
         payment_currency="INR",
-        verification_code=hash_booking_code(code),
+        status="requested",
     )
     db.add(booking)
     try:
@@ -123,8 +125,32 @@ def create_booking(
         payment_collected_at=booking.payment_collected_at,
         payment_reference=booking.payment_reference,
         status=booking.status,
-        verification_code=code,
+        rejection_reason=booking.rejection_reason,
     )
+
+
+@router.get("/{booking_id}/check-in-code", response_model=BookingCheckInCode)
+def get_patient_check_in_code(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    booking = (
+        db.query(Booking)
+        .filter(Booking.id == booking_id, Booking.patient_user_id == user.id)
+        .first()
+    )
+    if booking is None:
+        raise HTTPException(404, "Booking not found")
+    if booking.status != "confirmed" or not booking.verification_code_delivery:
+        raise HTTPException(409, "A check-in code is available only for a confirmed appointment")
+    try:
+        code = decrypt_booking_code(booking.verification_code_delivery)
+    except RuntimeError as error:
+        raise HTTPException(503, "The check-in code is temporarily unavailable") from error
+    record_audit_event(db, user, "booking.check_in_code_viewed", "booking", booking.id)
+    db.commit()
+    return BookingCheckInCode(verification_code=code)
 
 
 @router.post("/{booking_id}/documents", response_model=list[BookingDocumentRead], status_code=201)
@@ -145,7 +171,7 @@ def upload_booking_documents(
     )
     if booking is None:
         raise HTTPException(404, "Booking not found")
-    if booking.status != "booked":
+    if booking.status not in {"requested", "confirmed"}:
         raise HTTPException(409, "Documents can only be uploaded to an active appointment request")
     if not files:
         raise HTTPException(422, "Select at least one document to upload")
@@ -301,9 +327,13 @@ def cancel_booking(
         appointment_at = appointment_at.replace(tzinfo=timezone.utc)
     if appointment_at <= datetime.now(timezone.utc):
         raise HTTPException(409, "Past appointments cannot be cancelled")
-    if booking.status != "booked":
-        raise HTTPException(409, "This booking can no longer be cancelled")
+    if booking.status not in {"requested", "confirmed"}:
+        raise HTTPException(409, "This appointment can no longer be cancelled")
+    if booking.payment_status == "paid":
+        raise HTTPException(409, "Paid appointments require a refund or credit decision before cancellation")
     booking.status = "cancelled"
+    booking.verification_code = None
+    booking.verification_code_delivery = None
     record_audit_event(db, user, "booking.cancelled", "booking", booking.id)
     db.commit()
     db.refresh(booking)
@@ -317,14 +347,15 @@ def record_physical_payment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in {"platform_admin", "facility_staff"}:
+    if user.role != "facility_staff":
         raise HTTPException(403, "Facility staff access is required to record payments")
     booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update().first()
     if booking is None:
         raise HTTPException(404, "Booking not found")
     require_facility_access(user, booking.facility_id)
-    if booking.status != "booked":
-        raise HTTPException(409, "Payment can only be recorded for an active booking")
+    if booking.status != "confirmed":
+        raise HTTPException(409, "Payment can only be recorded for a confirmed appointment")
+    require_facility_entitlement(db, booking.facility_id, operational_write=True)
     if booking.payment_status != "unpaid":
         raise HTTPException(409, "Payment has already been recorded or is not required")
     if booking.payment_due_paise <= 0:
@@ -347,7 +378,7 @@ def verify_code(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in {"platform_admin", "facility_staff"}:
+    if user.role != "facility_staff":
         raise HTTPException(403, "Facility staff access is required to verify bookings")
     booking = (
         db.query(Booking)
@@ -358,12 +389,13 @@ def verify_code(
     if not booking:
         return VerifyRead(valid=False, message="Invalid booking code")
     require_facility_access(user, booking.facility_id)
-    if booking.status == "verified":
+    if booking.status == "checked_in":
         return VerifyRead(valid=False, message="Booking code has already been used", booking_id=booking.id,
                           payment_status=booking.payment_status, appointment_at=booking.appointment_at)
-    if booking.status != "booked":
+    if booking.status != "confirmed":
         return VerifyRead(valid=False, message="Booking is not active", booking_id=booking.id,
                           payment_status=booking.payment_status, appointment_at=booking.appointment_at)
+    require_facility_entitlement(db, booking.facility_id, operational_write=True)
     appointment_at = booking.appointment_at
     if appointment_at.tzinfo is None:
         appointment_at = appointment_at.replace(tzinfo=timezone.utc)
@@ -392,8 +424,10 @@ def verify_code(
             payment_status=booking.payment_status,
             appointment_at=booking.appointment_at,
         )
-    booking.status = "verified"
+    booking.status = "checked_in"
     booking.verified_at = datetime.now(timezone.utc)
+    booking.verification_code = None
+    booking.verification_code_delivery = None
     record_audit_event(db, user, "booking.verified", "booking", booking.id)
     db.commit()
     return VerifyRead(valid=True, message="Booking verified", booking_id=booking.id,

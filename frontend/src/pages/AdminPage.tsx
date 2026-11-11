@@ -5,8 +5,9 @@ import SiteLayout from "../components/SiteLayout";
 import {
   DIRECTORY_PAGE_SIZE,
   cancelManagedBooking,
-  createFacility,
+  completeManagedBooking,
   createFacilityService,
+  confirmManagedBooking,
   downloadBookingDocument,
   deleteManagedFacility,
   deleteManagedService,
@@ -17,6 +18,8 @@ import {
   getManagedServices,
   getManagedUsers,
   recordManagedBookingPayment,
+  rejectManagedBooking,
+  submitFacilityOnboarding,
   updateManagedFacility,
   updateManagedService,
   updateManagedUser,
@@ -28,8 +31,9 @@ import {
   type Facility,
   type ManagedService,
 } from "../api/client";
+import SubscriptionPanel from "./SubscriptionPanel";
 
-type AdminTab = "directory" | "bookings" | "accounts";
+type AdminTab = "overview" | "facilities" | "directory" | "bookings" | "accounts" | "subscriptions";
 
 function errorText(error: unknown) {
   return error instanceof Error
@@ -49,7 +53,7 @@ export default function AdminPage() {
   const { user } = useAuth();
   const isPlatformAdmin = user?.role === "platform_admin";
   const canManage = isPlatformAdmin || user?.role === "facility_staff";
-  const [tab, setTab] = useState<AdminTab>("directory");
+  const [tab, setTab] = useState<AdminTab>(isPlatformAdmin ? "overview" : "directory");
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [selectedFacilityId, setSelectedFacilityId] = useState<number | null>(null);
@@ -59,7 +63,6 @@ export default function AdminPage() {
   const [accountsHaveMore, setAccountsHaveMore] = useState(false);
   const [loadingMoreAccounts, setLoadingMoreAccounts] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
-  const [bookingFacilityFilter, setBookingFacilityFilter] = useState("");
   const [codes, setCodes] = useState<Record<number, string>>({});
   const [documentsByBooking, setDocumentsByBooking] = useState<Record<number, BookingDocument[]>>({});
   const [documentsLoaded, setDocumentsLoaded] = useState<Record<number, boolean>>({});
@@ -75,7 +78,6 @@ export default function AdminPage() {
   } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const facilityFormRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
 
   const selectedFacility = facilities.find((facility) => facility.id === selectedFacilityId) ?? null;
@@ -121,9 +123,6 @@ export default function AdminPage() {
   async function loadBookings() {
     const result = await getManagedBookings({
       status: bookingStatus || undefined,
-      facility_id: isPlatformAdmin && bookingFacilityFilter
-        ? Number(bookingFacilityFilter)
-        : undefined,
     });
     setBookings(result);
   }
@@ -166,7 +165,7 @@ export default function AdminPage() {
   }, [canManage]);
 
   useEffect(() => {
-    if (!canManage || selectedFacilityId === null) {
+    if (user?.role !== "facility_staff" || selectedFacilityId === null) {
       setServices([]);
       return;
     }
@@ -181,16 +180,13 @@ export default function AdminPage() {
     return () => {
       active = false;
     };
-  }, [canManage, selectedFacilityId]);
+  }, [selectedFacilityId, user?.role]);
 
   useEffect(() => {
-    if (!canManage || tab !== "bookings") return;
+    if (user?.role !== "facility_staff" || tab !== "bookings") return;
     let active = true;
     getManagedBookings({
       status: bookingStatus || undefined,
-      facility_id: isPlatformAdmin && bookingFacilityFilter
-        ? Number(bookingFacilityFilter)
-        : undefined,
     })
       .then((items) => {
         if (active) setBookings(items);
@@ -201,7 +197,7 @@ export default function AdminPage() {
     return () => {
       active = false;
     };
-  }, [bookingFacilityFilter, bookingStatus, canManage, isPlatformAdmin, tab]);
+  }, [bookingStatus, tab, user?.role]);
 
   useEffect(() => {
     if (!canManage || !isPlatformAdmin || tab !== "accounts") return;
@@ -235,29 +231,31 @@ export default function AdminPage() {
     }
   }
 
-  async function submitNewFacility(event: FormEvent<HTMLFormElement>) {
+  async function submitFacilityOnboardingRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    setDirectoryActionBusy("facility:create", true);
+    setDirectoryActionBusy("facility:onboarding", true);
     setError("");
     setNotice("");
     try {
-      const created = await createFacility({
+      const created = await submitFacilityOnboarding({
         name: String(form.get("name")),
         facility_type: String(form.get("facility_type")) as Facility["facility_type"],
         address: String(form.get("address")),
         city: String(form.get("city")),
         phone: String(form.get("phone") ?? ""),
+        description: String(form.get("description") ?? ""),
+        timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
       });
-      setNotice("Facility added.");
+      setNotice("Facility submitted. It will remain unavailable to patients until a platform administrator approves it.");
       await loadDirectory();
       setSelectedFacilityId(created.id);
       formElement.reset();
     } catch (reason) {
       setError(errorText(reason));
     } finally {
-      setDirectoryActionBusy("facility:create", false);
+      setDirectoryActionBusy("facility:onboarding", false);
     }
   }
 
@@ -271,8 +269,9 @@ export default function AdminPage() {
       address: String(form.get("address")),
       city: String(form.get("city")),
       phone: String(form.get("phone") ?? ""),
+      description: String(form.get("description") ?? ""),
+      timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
     };
-    if (isPlatformAdmin) payload.is_active = form.get("is_active") === "on";
     const action = `facility:${selectedFacility.id}:save`;
     setDirectoryActionBusy(action, true);
     setError("");
@@ -396,14 +395,6 @@ export default function AdminPage() {
     }
   }
 
-  function editFacility(facility: Facility) {
-    setSelectedFacilityId(facility.id);
-    setNotice(`Editing ${facility.name}.`);
-    window.requestAnimationFrame(() => {
-      facilityFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-  }
-
   async function cancelBooking(booking: AdminBooking) {
     if (!window.confirm(`Cancel the booking for ${booking.patient_name}?`)) return;
     setSaving(true);
@@ -414,6 +405,57 @@ export default function AdminPage() {
       setNotice("Booking cancelled.");
       await loadBookings();
       await loadDashboard();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmBooking(booking: AdminBooking) {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await confirmManagedBooking(booking.id);
+      setNotice("Appointment confirmed. The patient can now retrieve their check-in code.");
+      await loadBookings();
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function rejectBooking(booking: AdminBooking) {
+    const reason = window.prompt("Why is this appointment request being rejected?");
+    if (reason === null) return;
+    if (reason.trim().length < 5) {
+      setError("Enter a rejection reason of at least five characters.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await rejectManagedBooking(booking.id, reason.trim());
+      setNotice("Appointment request rejected.");
+      await loadBookings();
+    } catch (failure) {
+      setError(errorText(failure));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function completeBooking(booking: AdminBooking) {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await completeManagedBooking(booking.id);
+      setNotice("Appointment marked complete.");
+      await loadBookings();
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -491,14 +533,19 @@ export default function AdminPage() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const role = String(form.get("role")) as "patient" | "facility_staff";
-    const payload: { role: "patient" | "facility_staff"; facility_id?: number } = { role };
+    const payload: { role: "patient" | "facility_staff"; facility_id?: number | null } = { role };
     if (role === "facility_staff") {
-      const facilityId = Number(form.get("facility_id"));
-      if (!Number.isInteger(facilityId) || facilityId < 1) {
-        setError("Choose a facility for this staff account.");
-        return;
+      const selectedFacility = String(form.get("facility_id") ?? "");
+      if (selectedFacility) {
+        const facilityId = Number(selectedFacility);
+        if (!Number.isInteger(facilityId) || facilityId < 1) {
+          setError("Choose a valid facility or leave the account unassigned.");
+          return;
+        }
+        payload.facility_id = facilityId;
+      } else {
+        payload.facility_id = null;
       }
-      payload.facility_id = facilityId;
     }
     setSavingAccountAction({ accountId: account.id, action: "save" });
     setError("");
@@ -540,8 +587,8 @@ export default function AdminPage() {
 
   return <SiteLayout>
     <main className="admin-page content">
-      <p className="eyebrow">GETTOGETHER MANAGEMENT</p>
-      <h1>{isPlatformAdmin ? "Admin panel" : "Facility workspace"}</h1>
+      <p className="eyebrow">{isPlatformAdmin ? "PLATFORM ADMINISTRATION" : "FACILITY OPERATIONS"}</p>
+      <h1>{isPlatformAdmin ? "Platform admin panel" : "Facility workspace"}</h1>
       {error && <p ref={errorRef} className="notice" role="alert">{error}</p>}
       {notice && <p className="admin-success" role="status">{notice}</p>}
       {loading && <p role="status">Loading management data…</p>}
@@ -554,85 +601,92 @@ export default function AdminPage() {
       </div>}
 
       <div className="admin-tabs" role="tablist" aria-label="Admin sections">
-        <button type="button" role="tab" aria-selected={tab === "directory"} onClick={() => setTab("directory")}>Facilities & services</button>
-        <button type="button" role="tab" aria-selected={tab === "bookings"} onClick={() => setTab("bookings")}>Bookings</button>
-        {isPlatformAdmin && <button type="button" role="tab" aria-selected={tab === "accounts"} onClick={() => setTab("accounts")}>User accounts</button>}
+        {isPlatformAdmin ? <>
+          <button type="button" role="tab" aria-selected={tab === "overview"} onClick={() => setTab("overview")}>Overview</button>
+          <button type="button" role="tab" aria-selected={tab === "facilities"} onClick={() => setTab("facilities")}>Facilities</button>
+          <button type="button" role="tab" aria-selected={tab === "subscriptions"} onClick={() => setTab("subscriptions")}>Subscriptions</button>
+          <button type="button" role="tab" aria-selected={tab === "accounts"} onClick={() => setTab("accounts")}>User accounts</button>
+        </> : <>
+          <button type="button" role="tab" aria-selected={tab === "directory"} onClick={() => setTab("directory")}>My facility & services</button>
+          <button type="button" role="tab" aria-selected={tab === "bookings"} onClick={() => setTab("bookings")}>Appointments</button>
+          <button type="button" role="tab" aria-selected={tab === "subscriptions"} onClick={() => setTab("subscriptions")}>Subscription & billing</button>
+        </>}
       </div>
 
-      {tab === "directory" && <section className="admin-section">
-        {isPlatformAdmin && <form className="admin-form" onSubmit={submitNewFacility}>
-          <h2>Add a facility</h2>
-          <FacilityFields />
-          <button className="primary-link" disabled={busyDirectoryActions.has("facility:create")}>{busyDirectoryActions.has("facility:create") ? "Saving…" : "Add facility"}</button>
-        </form>}
+      {isPlatformAdmin && tab === "overview" && <section className="admin-panel">
+        <div className="admin-panel-heading"><div><p className="eyebrow">SYSTEM SUMMARY</p><h2>Platform overview</h2></div></div>
+        <p>These totals provide platform-level visibility. Facility staff handle individual appointment records, payments, and check-in.</p>
+      </section>}
 
+      {tab === "subscriptions" && <SubscriptionPanel
+        platformAdmin={isPlatformAdmin}
+        facilityAvailable={facilities.length > 0}
+        userId={user.id}
+      />}
+
+      {isPlatformAdmin && tab === "facilities" && <section className="admin-section">
         <section className="admin-panel">
-          <div className="admin-panel-heading">
-            <div><p className="eyebrow">DIRECTORY</p><h2>Manage facilities</h2></div>
-            {isPlatformAdmin && facilities.length > 0 && <label className="admin-select-label">Choose facility
-              <select value={selectedFacilityId ?? ""} onChange={(event) => setSelectedFacilityId(Number(event.target.value) || null)}>
-                {facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}{facility.is_active ? "" : " (inactive)"}</option>)}
-              </select>
-            </label>}
+          <div className="admin-panel-heading"><h2>Facilities</h2></div>
+          {facilities.length === 0 && <p className="admin-empty">No facilities have been registered yet.</p>}
+          <div className="admin-item-list">
+            {facilities.map((facility) => <article className="admin-item admin-facility-row" key={facility.id}>
+              <div><h3>{facility.name}</h3><p>{facility.city} · {facility.facility_type}</p><p>{facility.description || "No public description"} · {facility.timezone}</p><span className={facility.is_active ? "admin-status active" : "admin-status"}>{facility.is_active ? "Active" : "Inactive"}</span></div>
+              <div className="admin-actions"><button type="button" className="secondary-button" disabled={isFacilityBusy(facility.id)} onClick={() => toggleFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:status`) ? "Updating…" : facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={isFacilityBusy(facility.id)} onClick={() => deleteFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:delete`) ? "Deleting…" : "Delete"}</button></div>
+            </article>)}
           </div>
-          {!selectedFacility && <p className="admin-empty">No facility is available to manage yet.</p>}
-          {selectedFacility && <>
-            <form ref={facilityFormRef} key={selectedFacility.id} className="admin-form admin-form-inline" onSubmit={submitFacilityUpdate}>
-              <h3>Facility details</h3>
-              <FacilityFields facility={selectedFacility} />
-              {isPlatformAdmin && <label className="admin-checkbox"><input type="checkbox" name="is_active" defaultChecked={selectedFacility.is_active} /> Listed publicly</label>}
-              <div className="admin-actions">
-                <button className="primary-link" disabled={isFacilityBusy(selectedFacility.id)}>{isDirectoryActionBusy(`facility:${selectedFacility.id}:save`) ? "Saving…" : "Save facility"}</button>
-                {isPlatformAdmin && <button type="button" className="danger-button" disabled={isFacilityBusy(selectedFacility.id)} onClick={() => deleteFacility(selectedFacility)}>{isDirectoryActionBusy(`facility:${selectedFacility.id}:delete`) ? "Deleting…" : "Delete facility"}</button>}
-              </div>
-            </form>
+        </section>
+      </section>}
 
-            <div className="admin-list-heading"><h3>Services</h3><span>{services.length} total</span></div>
+      {!isPlatformAdmin && tab === "directory" && <section className="admin-section">
+        <section className="admin-panel">
+          <div className="admin-panel-heading"><div><p className="eyebrow">MY FACILITY</p><h2>Facility details</h2></div></div>
+          {!selectedFacility && <p className="admin-empty">This staff account is not assigned to a facility.</p>}
+          {!selectedFacility && <form className="admin-form admin-form-inline" onSubmit={submitFacilityOnboardingRequest}>
+            <h3>Submit a new facility</h3>
+            <p>Your facility will stay inactive until a platform administrator reviews and approves it.</p>
+            <FacilityFields />
+            <button className="primary-link" disabled={busyDirectoryActions.has("facility:onboarding")}>{busyDirectoryActions.has("facility:onboarding") ? "Submitting…" : "Submit for approval"}</button>
+          </form>}
+          {selectedFacility && <>
+            {!selectedFacility.is_active && <p className="admin-guidance" role="status">This facility is awaiting platform-admin approval. Patients cannot find it or request appointments yet.</p>}
+            <form key={selectedFacility.id} className="admin-form admin-form-inline" onSubmit={submitFacilityUpdate}>
+              <fieldset disabled={!selectedFacility.is_active}>
+                <FacilityFields facility={selectedFacility} />
+                <button className="primary-link" disabled={isFacilityBusy(selectedFacility.id)}>{isDirectoryActionBusy(`facility:${selectedFacility.id}:save`) ? "Saving…" : "Save facility"}</button>
+              </fieldset>
+            </form>
+            <div className="admin-list-heading"><h3>Doctors & services</h3><span>{services.length} total</span></div>
             {services.length === 0 && <p className="admin-empty">No services have been added to this facility yet.</p>}
             <div className="admin-item-list">
               {services.map((service) => <article className="admin-item" key={service.id}>
                 <form className="admin-form admin-item-form" onSubmit={(event) => submitService(event, service)}>
                   <div className="admin-item-heading"><div><h4>{service.name}</h4><span className={service.is_active ? "admin-status active" : "admin-status"}>{service.is_active ? "Active" : "Inactive"}</span></div></div>
-                  <ServiceFields service={service} />
+                  <fieldset disabled={!selectedFacility.is_active}>
+                    <ServiceFields service={service} />
                   <div className="admin-actions">
                     <button className="primary-link" disabled={isServiceBusy(service.id)}>{isDirectoryActionBusy(`service:${service.id}:save`) ? "Saving…" : "Save service"}</button>
                     <button type="button" className="secondary-button" disabled={isServiceBusy(service.id)} onClick={() => toggleService(service)}>{isDirectoryActionBusy(`service:${service.id}:status`) ? "Updating…" : service.is_active ? "Deactivate" : "Activate"}</button>
-                    {isPlatformAdmin && <button type="button" className="danger-button" disabled={isServiceBusy(service.id)} onClick={() => deleteService(service)}>{isDirectoryActionBusy(`service:${service.id}:delete`) ? "Deleting…" : "Delete service"}</button>}
+                    <button type="button" className="danger-button" disabled={isServiceBusy(service.id)} onClick={() => deleteService(service)}>{isDirectoryActionBusy(`service:${service.id}:delete`) ? "Deleting…" : "Delete service"}</button>
                   </div>
+                  </fieldset>
                 </form>
               </article>)}
             </div>
-
-            {selectedFacility.is_active && <form className="admin-form admin-add-service" onSubmit={(event) => submitService(event)}>
+            {selectedFacility?.is_active && <form className="admin-form admin-add-service" onSubmit={(event) => submitService(event)}>
               <h3>Add a service</h3>
               <ServiceFields />
               <button className="primary-link" disabled={busyDirectoryActions.has(`service:create:${selectedFacility.id}`)}>{busyDirectoryActions.has(`service:create:${selectedFacility.id}`) ? "Saving…" : "Add service"}</button>
             </form>}
           </>}
         </section>
-
-        {isPlatformAdmin && <section className="admin-panel">
-          <div className="admin-panel-heading"><h2>All facilities</h2></div>
-          <div className="admin-item-list">
-            {facilities.map((facility) => <article className="admin-item admin-facility-row" key={facility.id}>
-              <div><h3>{facility.name}</h3><p>{facility.city} · {facility.facility_type}</p><span className={facility.is_active ? "admin-status active" : "admin-status"}>{facility.is_active ? "Listed publicly" : "Not listed"}</span></div>
-              <div className="admin-actions"><button type="button" className="secondary-button" onClick={() => editFacility(facility)}>Edit</button><button type="button" className="secondary-button" disabled={isFacilityBusy(facility.id)} onClick={() => toggleFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:status`) ? "Updating…" : facility.is_active ? "Deactivate" : "Activate"}</button><button type="button" className="danger-button" disabled={isFacilityBusy(facility.id)} onClick={() => deleteFacility(facility)}>{isDirectoryActionBusy(`facility:${facility.id}:delete`) ? "Deleting…" : "Delete"}</button></div>
-            </article>)}
-          </div>
-        </section>}
       </section>}
 
-      {tab === "bookings" && <section className="admin-panel">
+      {!isPlatformAdmin && tab === "bookings" && <section className="admin-panel">
         <div className="admin-panel-heading"><div><p className="eyebrow">APPOINTMENTS</p><h2>Bookings</h2></div>
           <div className="admin-booking-filters">
-            {isPlatformAdmin && <label className="admin-select-label">Facility
-              <select value={bookingFacilityFilter} onChange={(event) => setBookingFacilityFilter(event.target.value)}>
-                <option value="">All facilities</option>{facilities.map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}
-              </select>
-            </label>}
             <label className="admin-select-label">Status
               <select value={bookingStatus} onChange={(event) => setBookingStatus(event.target.value)}>
-                <option value="">All statuses</option><option value="booked">Booked</option><option value="verified">Verified</option><option value="cancelled">Cancelled</option>
+                <option value="">All statuses</option><option value="requested">Requested</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="checked_in">Checked in</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
               </select>
             </label>
           </div>
@@ -643,6 +697,7 @@ export default function AdminPage() {
             <div className="admin-item-heading"><div><h3>{booking.service_name}</h3>{booking.provider_name && <p>{booking.provider_name}</p>}<span className={`admin-status ${booking.status}`}>{booking.status}</span></div><b>{booking.facility_name}</b></div>
             <p>{booking.patient_name} · {booking.patient_email_masked}</p>
             <p>{formatAppointment(booking.appointment_at)}</p>
+            {booking.rejection_reason && <p>Rejection reason: {booking.rejection_reason}</p>}
             <p>Payment: {booking.payment_status} · {booking.payment_method === "physical" ? "at facility" : booking.payment_method} · {formatMoney(booking.payment_due_paise, booking.payment_currency)} due</p>
             {booking.payment_status === "paid" && <p>Collected{booking.payment_collector_name ? ` by ${booking.payment_collector_name}` : ""}{booking.payment_collected_at ? ` · ${formatAppointment(booking.payment_collected_at)}` : ""}{booking.payment_reference ? ` · Receipt: ${booking.payment_reference}` : ""}</p>}
             {user?.role === "facility_staff" && <section className="booking-documents">
@@ -655,7 +710,12 @@ export default function AdminPage() {
                   </li>)}</ul>
                   : <p>No documents uploaded for this appointment.</p>}
             </section>}
-            {booking.status === "booked" && <div className="admin-actions admin-booking-actions">
+            {booking.status === "requested" && <div className="admin-actions admin-booking-actions">
+              <button type="button" className="primary-link" disabled={saving} onClick={() => confirmBooking(booking)}>Confirm request</button>
+              <button type="button" className="danger-button" disabled={saving} onClick={() => rejectBooking(booking)}>Reject request</button>
+              {booking.payment_status !== "paid" && <button type="button" className="danger-button" disabled={saving || new Date(booking.appointment_at).getTime() <= Date.now()} onClick={() => cancelBooking(booking)}>Cancel request</button>}
+            </div>}
+            {booking.status === "confirmed" && <div className="admin-actions admin-booking-actions">
               {booking.payment_status === "unpaid" && <form className="admin-verify-form" onSubmit={(event) => submitPaymentCollection(event, booking)}>
                 <label htmlFor={`payment-reference-${booking.id}`}>Receipt or payment reference</label>
                 <input id={`payment-reference-${booking.id}`} name="reference" maxLength={120} required />
@@ -664,17 +724,18 @@ export default function AdminPage() {
               <form className="admin-verify-form" onSubmit={(event) => submitVerification(event, booking)}>
                 <label htmlFor={`booking-code-${booking.id}`}>6-digit check-in code</label>
                 <input id={`booking-code-${booking.id}`} value={codes[booking.id] ?? ""} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required onChange={(event) => setCodes((current) => ({ ...current, [booking.id]: event.target.value.replace(/\D/g, "").slice(0, 6) }))} />
-                <button className="secondary-button" disabled={saving}>Verify booking</button>
+                <button className="secondary-button" disabled={saving}>Check in patient</button>
               </form>
-              <button type="button" className="danger-button" disabled={saving || new Date(booking.appointment_at).getTime() <= Date.now()} onClick={() => cancelBooking(booking)}>Cancel booking</button>
+              {booking.payment_status !== "paid" && <button type="button" className="danger-button" disabled={saving || new Date(booking.appointment_at).getTime() <= Date.now()} onClick={() => cancelBooking(booking)}>Cancel booking</button>}
             </div>}
+            {booking.status === "checked_in" && <button type="button" className="primary-link" disabled={saving} onClick={() => completeBooking(booking)}>Mark appointment complete</button>}
           </article>)}
         </div>
       </section>}
 
       {tab === "accounts" && isPlatformAdmin && <section className="admin-panel">
         <div className="admin-panel-heading"><div><p className="eyebrow">ACCESS CONTROL</p><h2>User accounts</h2></div></div>
-        <p className="admin-guidance">Email verification is temporarily paused. Dashboard access changes sign the user out. Platform administrator roles are operator-managed and cannot be changed here.</p>
+        <p className="admin-guidance">Email verification is temporarily paused. Dashboard access changes sign the user out. To onboard a new facility, assign facility-staff access without choosing a facility; that person can submit the facility from the Facility workspace. Platform administrator roles are operator-managed and cannot be changed here.</p>
         {accounts.length === 0 && <p className="admin-empty">No accounts are registered yet.</p>}
         <div className="admin-item-list">
           {accounts.map((account) => <article className="admin-item admin-account" key={account.id}>
@@ -685,7 +746,7 @@ export default function AdminPage() {
                 <option value="patient">Patient</option><option value="facility_staff">Facility staff</option>
               </select></label>
               <label>Assigned facility<select name="facility_id" defaultValue={account.facility_id ?? ""}>
-                <option value="">Choose facility</option>{facilities.filter((facility) => facility.is_active).map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}
+                <option value="">No facility — allow staff onboarding</option>{facilities.filter((facility) => facility.is_active).map((facility) => <option key={facility.id} value={facility.id}>{facility.name}</option>)}
               </select></label>
               <div className="admin-actions"><button className="primary-link" disabled={savingAccountAction?.accountId === account.id}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "save" ? "Saving…" : "Save access"}</button><button type="button" className="secondary-button" disabled={savingAccountAction?.accountId === account.id} onClick={() => toggleAccount(account)}>{savingAccountAction?.accountId === account.id && savingAccountAction.action === "toggle" ? account.is_active ? "Deactivating…" : "Activating…" : account.is_active ? "Deactivate account" : "Activate account"}</button></div>
             </form>}
@@ -704,6 +765,8 @@ function FacilityFields({ facility }: { facility?: Facility }) {
     <label>Address<input name="address" minLength={5} defaultValue={facility?.address ?? ""} required /></label>
     <label>City<input name="city" minLength={2} maxLength={100} defaultValue={facility?.city ?? ""} required /></label>
     <label>Phone<input name="phone" maxLength={30} defaultValue={facility?.phone ?? ""} /></label>
+    <label>Public description<textarea name="description" maxLength={2000} defaultValue={facility?.description ?? ""} /></label>
+    <label>Timezone (IANA)<input name="timezone" maxLength={64} defaultValue={facility?.timezone ?? "Asia/Kolkata"} required /></label>
   </>;
 }
 

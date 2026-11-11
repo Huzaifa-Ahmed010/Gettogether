@@ -36,7 +36,7 @@ def cleanup_accounts(*account_ids: int):
         db.commit()
 
 
-def test_directory_management_is_role_and_facility_scoped(platform_admin_headers):
+def test_directory_management_is_role_and_facility_scoped(platform_admin_headers, grant_facility_entitlement):
     suffix = uuid4().hex
     facility_ids: list[int] = []
     account_ids: list[int] = []
@@ -50,36 +50,70 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                 "address": "1 Admin Road",
                 "city": "Admin City",
                 "phone": "555-0123",
+                "description": "A test healthcare facility",
+                "timezone": "Asia/Kolkata",
             }
-            first = client.post(
+            staff_id, _, staff_headers = create_account("facility_staff")
+            other_staff_id, _, other_staff_headers = create_account("facility_staff")
+            account_ids.extend((staff_id, other_staff_id))
+            assert client.post(
                 "/api/v1/facilities",
                 json=facility_payload,
                 headers=platform_admin_headers,
+            ).status_code == 403
+            first = client.post(
+                "/api/v1/facilities",
+                json=facility_payload,
+                headers=staff_headers,
             )
             second = client.post(
                 "/api/v1/facilities",
                 json={**facility_payload, "name": f"Other Center {suffix}"},
-                headers=platform_admin_headers,
+                headers=other_staff_headers,
             )
             assert first.status_code == second.status_code == 201
             facility_id = first.json()["id"]
             other_facility_id = second.json()["id"]
             facility_ids.extend((facility_id, other_facility_id))
+            assert not first.json()["is_active"] and not second.json()["is_active"]
+            for created_facility_id in (facility_id, other_facility_id):
+                assert client.patch(
+                    f"/api/v1/admin/facilities/{created_facility_id}",
+                    json={"is_active": True},
+                    headers=platform_admin_headers,
+                ).status_code == 200
+            grant_facility_entitlement(facility_id)
+            grant_facility_entitlement(other_facility_id)
 
+            service_payload = {
+                "name": f"Family medicine {suffix}",
+                "category": "Primary care",
+                "service_type": "doctor",
+                "provider_name": "Dr Demo",
+                "fee_paise": 25000,
+            }
+            assert client.post(
+                f"/api/v1/facilities/{facility_id}/services",
+                json={**service_payload, "name": f"Admin attempt {suffix}"},
+                headers=platform_admin_headers,
+            ).status_code == 403
             service_response = client.post(
                 f"/api/v1/facilities/{facility_id}/services",
-                json={
-                    "name": f"Family medicine {suffix}",
-                    "category": "Primary care",
-                    "service_type": "doctor",
-                    "provider_name": "Dr Demo",
-                    "fee_paise": 25000,
-                },
-                headers=platform_admin_headers,
+                json=service_payload,
+                headers=staff_headers,
             )
             assert service_response.status_code == 201
             service_id = service_response.json()["id"]
             service_ids.append(service_id)
+            assert client.get(
+                f"/api/v1/admin/facilities/{facility_id}/services",
+                headers=platform_admin_headers,
+            ).status_code == 403
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}/services/{service_id}",
+                json={"fee_paise": 35000},
+                headers=platform_admin_headers,
+            ).status_code == 403
 
             unused_service_response = client.post(
                 f"/api/v1/facilities/{facility_id}/services",
@@ -90,21 +124,12 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                     "provider_name": "Dr Demo",
                     "fee_paise": 0,
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert unused_service_response.status_code == 201
             unused_service_id = unused_service_response.json()["id"]
             service_ids.append(unused_service_id)
 
-            staff_id, _, staff_headers = create_account(
-                "facility_staff",
-                facility_id=facility_id,
-            )
-            other_staff_id, _, other_staff_headers = create_account(
-                "facility_staff",
-                facility_id=other_facility_id,
-            )
-            account_ids.extend((staff_id, other_staff_id))
             patient_id, _, patient_headers = create_account("patient")
             account_ids.append(patient_id)
 
@@ -130,6 +155,11 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
             ).status_code == 403
             assert client.patch(
                 f"/api/v1/admin/facilities/{facility_id}",
+                json={"timezone": "Not/AZone"},
+                headers=staff_headers,
+            ).status_code == 422
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
                 json={"is_active": False},
                 headers=staff_headers,
             ).status_code == 403
@@ -138,27 +168,40 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                 json={"city": "Updated Admin City"},
                 headers=platform_admin_headers,
             )
+            assert facility_update.status_code == 403
+            facility_update = client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={
+                    "city": "Updated Admin City",
+                    "description": "Updated description",
+                    "timezone": "Asia/Dubai",
+                },
+                headers=staff_headers,
+            )
             assert facility_update.status_code == 200
             assert facility_update.json()["city"] == "Updated Admin City"
+            assert facility_update.json()["description"] == "Updated description"
+            assert facility_update.json()["timezone"] == "Asia/Dubai"
+            assert client.get(f"/api/v1/facilities/{facility_id}").json()["timezone"] == "Asia/Dubai"
 
             assert client.delete(
                 f"/api/v1/admin/facilities/{facility_id}/services/{unused_service_id}",
-                headers=staff_headers,
+                headers=platform_admin_headers,
             ).status_code == 403
             deleted_service = client.delete(
                 f"/api/v1/admin/facilities/{facility_id}/services/{unused_service_id}",
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert deleted_service.status_code == 200
             assert client.get(
                 f"/api/v1/admin/facilities/{facility_id}/services",
-                headers=platform_admin_headers,
+                headers=staff_headers,
             ).json()
             assert all(
                 service["id"] != unused_service_id
                 for service in client.get(
                     f"/api/v1/admin/facilities/{facility_id}/services",
-                    headers=platform_admin_headers,
+                    headers=staff_headers,
                 ).json()
             )
             assert client.delete(
@@ -166,14 +209,22 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                 headers=platform_admin_headers,
             ).status_code == 409
 
+            unused_staff_id, _, unused_staff_headers = create_account("facility_staff")
+            account_ids.append(unused_staff_id)
             unused_facility = client.post(
                 "/api/v1/facilities",
                 json={**facility_payload, "name": f"Delete Center {suffix}"},
-                headers=platform_admin_headers,
+                headers=unused_staff_headers,
             )
             assert unused_facility.status_code == 201
             unused_facility_id = unused_facility.json()["id"]
             facility_ids.append(unused_facility_id)
+            assert client.patch(
+                f"/api/v1/admin/facilities/{unused_facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
+            grant_facility_entitlement(unused_facility_id)
             unused_facility_service = client.post(
                 f"/api/v1/facilities/{unused_facility_id}/services",
                 json={
@@ -183,10 +234,15 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                     "provider_name": "",
                     "fee_paise": 0,
                 },
-                headers=platform_admin_headers,
+                headers=unused_staff_headers,
             )
             assert unused_facility_service.status_code == 201
             service_ids.append(unused_facility_service.json()["id"])
+            with SessionLocal() as db:
+                unused_facility_staff = db.get(User, unused_staff_id)
+                assert unused_facility_staff is not None
+                unused_facility_staff.facility_id = None
+                db.commit()
             deleted_facility = client.delete(
                 f"/api/v1/admin/facilities/{unused_facility_id}",
                 headers=platform_admin_headers,
@@ -207,10 +263,20 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
             deactivated = client.patch(
                 f"/api/v1/admin/facilities/{facility_id}/services/{service_id}",
                 json={"is_active": False},
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert deactivated.status_code == 200
             assert deactivated.json()["is_active"] is False
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": False},
+                headers=platform_admin_headers,
+            ).status_code == 200
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
             assert client.get("/api/v1/admin/dashboard", headers=staff_headers).json() == {
                 "facilities": 1,
                 "services": 0,
@@ -242,12 +308,14 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
             cleanup_accounts(*account_ids)
 
 
-def test_booking_and_user_admin_permissions(platform_admin_headers):
+def test_booking_and_user_admin_permissions(platform_admin_headers, grant_facility_entitlement):
     suffix = uuid4().hex
     facility_id = None
     account_ids: list[int] = []
     with TestClient(app) as client:
         try:
+            staff_id, _, staff_headers = create_account("facility_staff")
+            account_ids.append(staff_id)
             facility_response = client.post(
                 "/api/v1/facilities",
                 json={
@@ -257,10 +325,16 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
                     "city": "Booking City",
                     "phone": "555-0124",
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert facility_response.status_code == 201
             facility_id = facility_response.json()["id"]
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
+            grant_facility_entitlement(facility_id)
             service_response = client.post(
                 f"/api/v1/facilities/{facility_id}/services",
                 json={
@@ -270,20 +344,16 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
                     "provider_name": "Dr Example",
                     "fee_paise": 10000,
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert service_response.status_code == 201
             service_id = service_response.json()["id"]
 
             patient_id, patient_email, patient_headers = create_account("patient")
-            staff_id, _, staff_headers = create_account(
-                "facility_staff",
-                facility_id=facility_id,
-            )
             other_staff_id, _, other_staff_headers = create_account(
                 "facility_staff",
             )
-            account_ids.extend((patient_id, staff_id, other_staff_id))
+            account_ids.extend((patient_id, other_staff_id))
 
             booking_response = client.post(
                 "/api/v1/bookings",
@@ -299,7 +369,7 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
             booking_id = booking_response.json()["id"]
             assert client.delete(
                 f"/api/v1/admin/facilities/{facility_id}/services/{service_id}",
-                headers=platform_admin_headers,
+                headers=staff_headers,
             ).status_code == 409
             assert client.delete(
                 f"/api/v1/admin/facilities/{facility_id}",
@@ -310,15 +380,25 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
                 "/api/v1/admin/bookings",
                 headers=platform_admin_headers,
             )
-            assert admin_bookings.status_code == 200
-            admin_booking = next(row for row in admin_bookings.json() if row["id"] == booking_id)
-            assert admin_booking["patient_name"] == "Test patient"
-            assert admin_booking["patient_email_masked"] == f"{patient_email[0]}***@example.com"
-            assert "patient_email" not in admin_booking
+            assert admin_bookings.status_code == 403
+            assert client.post(
+                f"/api/v1/admin/bookings/{booking_id}/cancel",
+                headers=platform_admin_headers,
+            ).status_code == 403
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}",
+                headers=platform_admin_headers,
+            ).status_code == 403
 
             staff_bookings = client.get("/api/v1/admin/bookings", headers=staff_headers)
             assert staff_bookings.status_code == 200
             assert [row["id"] for row in staff_bookings.json()] == [booking_id]
+            with SessionLocal() as db:
+                assert db.query(AuditEvent).filter(
+                    AuditEvent.actor_user_id == staff_id,
+                    AuditEvent.action == "booking.viewed",
+                    AuditEvent.resource_id == booking_id,
+                ).count() == 1
             assert client.get(
                 f"/api/v1/admin/bookings?facility_id={facility_id}",
                 headers=other_staff_headers,
@@ -350,6 +430,14 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
             assert assigned.status_code == 200
             assert assigned.json()["role"] == "facility_staff"
             assert assigned.json()["facility_id"] == facility_id
+            unassigned = client.patch(
+                f"/api/v1/admin/users/{patient_id}",
+                json={"role": "facility_staff", "facility_id": None},
+                headers=platform_admin_headers,
+            )
+            assert unassigned.status_code == 200
+            assert unassigned.json()["role"] == "facility_staff"
+            assert unassigned.json()["facility_id"] is None
 
             deactivated = client.patch(
                 f"/api/v1/admin/users/{patient_id}",
@@ -365,7 +453,7 @@ def test_booking_and_user_admin_permissions(platform_admin_headers):
             with SessionLocal() as db:
                 account = db.get(User, patient_id)
                 assert account is not None
-                assert account.token_version == 2
+                assert account.token_version == 3
             assert client.patch(
                 f"/api/v1/admin/users/{patient_id}",
                 json={"role": "platform_admin"},

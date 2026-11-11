@@ -122,6 +122,8 @@ export default function FacilityDetailPage() {
         <p className="eyebrow">{facility.facility_type === "hospital" ? "HOSPITAL" : "DIAGNOSTIC CENTER"}</p>
         <h1>{facility.name}</h1>
         <p className="facility-address">{facility.address}, {facility.city}</p>
+        {facility.description && <p>{facility.description}</p>}
+        <p>Local time zone: {facility.timezone}</p>
         {facility.phone && <a className="primary-link" href={`tel:${facility.phone}`}>Call {facility.phone}</a>}
         <section className="detail-services">
           <h2>Available services</h2>
@@ -132,9 +134,8 @@ export default function FacilityDetailPage() {
           <h2>Book an appointment</h2>
           {!user ? <p><Link to="/login">Sign in or create an account</Link> to book at this center.</p> : booking ? <div className="booking-confirmation" role="status">
             <h3>Appointment request submitted</h3>
-            <p>Your booking reference is <strong>#{booking.id}</strong>. Show this one-time check-in code to the facility staff:</p>
-            <strong className="booking-code">{booking.verification_code}</strong>
-            <p>Payment is due at the facility. View the appointment in <Link to="/bookings">My bookings</Link>.</p>
+            <p>Your request reference is <strong>#{booking.id}</strong>. The facility will review the request; a check-in code becomes available in My bookings only after it is confirmed.</p>
+            <p>Payment is due at the facility. Track the request in <Link to="/bookings">My bookings</Link>.</p>
             {selectedDocuments.length > 0 && (documentsUploaded
               ? <p>{selectedDocuments.length} document{selectedDocuments.length === 1 ? "" : "s"} uploaded for this appointment.</p>
               : <div>

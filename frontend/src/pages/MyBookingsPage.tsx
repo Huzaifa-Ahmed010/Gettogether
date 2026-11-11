@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   cancelBooking,
   downloadBookingDocument,
+  getBookingCheckInCode,
   getBookingDocuments,
   getMyBookings,
   type Booking,
@@ -22,6 +23,23 @@ export default function MyBookingsPage() {
   const [documentsLoaded, setDocumentsLoaded] = useState<Record<number, boolean>>({});
   const [documentsLoadingId, setDocumentsLoadingId] = useState<number | null>(null);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | null>(null);
+  const [checkInCodes, setCheckInCodes] = useState<Record<number, string>>({});
+  const [loadingCodeId, setLoadingCodeId] = useState<number | null>(null);
+
+  async function loadCheckInCode(bookingId: number) {
+    setActionError("");
+    setLoadingCodeId(bookingId);
+    try {
+      const result = await getBookingCheckInCode(bookingId);
+      setCheckInCodes((current) => ({ ...current, [bookingId]: result.verification_code }));
+    } catch (reason) {
+      setActionError(reason instanceof Error
+        ? reason.message.replace(/^API error \d+: /, "")
+        : "Unable to retrieve the check-in code.");
+    } finally {
+      setLoadingCodeId(null);
+    }
+  }
 
   async function loadDocuments(bookingId: number) {
     setActionError("");
@@ -92,8 +110,16 @@ export default function MyBookingsPage() {
         : loading ? <p className="directory-meta" role="status">Loading your bookings…</p>
           : error ? <p className="notice" role="alert">{error}</p>
             : bookings.length ? <>{actionError && <p className="account-error" role="alert">{actionError}</p>}<div className="booking-list">{bookings.map((booking) => <article className="booking-list-card" key={booking.id}>
-              <div><span className="facility-type">BOOKING #{booking.id}</span><h2>{booking.service_name}</h2>{booking.provider_name && <p>{booking.provider_name}</p>}<p>{booking.facility_name}</p><p>{new Date(booking.appointment_at).toLocaleString()}</p></div>
-              <div><span className={`booking-status booking-status-${booking.status}`}>{booking.status}</span>{booking.status === "booked" && new Date(booking.appointment_at).getTime() > Date.now() && <button type="button" className="booking-cancel-button" disabled={cancellingId === booking.id} onClick={() => cancelAppointment(booking)}>{cancellingId === booking.id ? "Cancelling…" : "Cancel appointment"}</button>}</div>
+              <div><span className="facility-type">REQUEST #{booking.id}</span><h2>{booking.service_name}</h2>{booking.provider_name && <p>{booking.provider_name}</p>}<p>{booking.facility_name}</p><p>{new Date(booking.appointment_at).toLocaleString()}</p>{booking.rejection_reason && <p>Reason: {booking.rejection_reason}</p>}</div>
+              <div>
+                <span className={`booking-status booking-status-${booking.status}`}>{booking.status.replaceAll("_", " ")}</span>
+                {booking.status === "confirmed" && <>
+                  {checkInCodes[booking.id]
+                    ? <p className="booking-code" aria-label="Appointment check-in code">{checkInCodes[booking.id]}</p>
+                    : <button type="button" className="secondary-button" disabled={loadingCodeId === booking.id} onClick={() => loadCheckInCode(booking.id)}>{loadingCodeId === booking.id ? "Loading…" : "View check-in code"}</button>}
+                </>}
+                {["requested", "confirmed"].includes(booking.status) && booking.payment_status !== "paid" && new Date(booking.appointment_at).getTime() > Date.now() && <button type="button" className="booking-cancel-button" disabled={cancellingId === booking.id} onClick={() => cancelAppointment(booking)}>{cancellingId === booking.id ? "Cancelling…" : "Cancel appointment"}</button>}
+              </div>
               <section className="booking-documents">
                 <h3>Reports and prescriptions</h3>
                 {!documentsLoaded[booking.id] ? <button type="button" className="secondary-button" disabled={documentsLoadingId === booking.id} onClick={() => loadDocuments(booking.id)}>{documentsLoadingId === booking.id ? "Loading…" : "View documents"}</button>

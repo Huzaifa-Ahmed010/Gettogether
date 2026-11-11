@@ -28,10 +28,11 @@ class BookingRead(BaseModel):
     payment_collected_at: datetime | None
     payment_reference: str | None
     status: str
+    rejection_reason: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 class BookingCreated(BookingRead):
-    verification_code: str
+    pass
 
 class BookingSummary(BookingRead):
     facility_name: str
@@ -67,3 +68,19 @@ class VerifyRead(BaseModel):
     booking_id: int | None = None
     payment_status: str | None = None
     appointment_at: datetime | None = None
+
+
+class BookingDecisionRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        reason = value.strip()
+        if len(reason) < 5:
+            raise ValueError("A clear rejection reason is required")
+        return reason
+
+
+class BookingCheckInCode(BaseModel):
+    verification_code: str = Field(pattern="^[0-9]{6}$")

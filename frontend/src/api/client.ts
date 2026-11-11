@@ -72,6 +72,8 @@ export type Facility = {
   address: string;
   city: string;
   phone: string;
+  description: string;
+  timezone: string;
   is_active: boolean;
 };
 
@@ -164,8 +166,9 @@ export type Booking = {
   payment_currency: string;
   payment_collected_at: string | null;
   payment_reference: string | null;
-  status: string;
+  status: "requested" | "confirmed" | "rejected" | "cancelled" | "checked_in" | "completed";
   verification_code?: string;
+  rejection_reason?: string | null;
   facility_name?: string;
   service_name?: string;
   provider_name?: string;
@@ -201,12 +204,110 @@ export type AdminBooking = {
   payment_collected_by_user_id: number | null;
   payment_collector_name: string | null;
   payment_reference: string | null;
-  status: string;
+  status: Booking["status"];
+  rejection_reason: string | null;
   patient_name: string;
   patient_email_masked: string;
   facility_name: string;
   service_name: string;
   provider_name: string;
+};
+
+export type SubscriptionPlan = {
+  id: number;
+  name: string;
+  description: string;
+  billing_interval: "monthly" | "quarterly" | "yearly";
+  price_paise: number | null;
+  currency: string;
+  is_active: boolean;
+};
+
+export type SubscriptionPayment = {
+  id: number;
+  gateway: string;
+  gateway_order_id: string | null;
+  amount_paise: number;
+  currency: string;
+  plan_name_snapshot: string;
+  billing_interval_snapshot: string;
+  status: string;
+  paid_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
+};
+
+export type FacilitySubscription = {
+  id: number | null;
+  facility_id: number;
+  facility_name: string;
+  status: string;
+  plan_id: number | null;
+  plan_name: string | null;
+  billing_interval: string | null;
+  price_paise: number | null;
+  currency: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  grace_period_end: string | null;
+  owner_user_id: number | null;
+  cancel_at_period_end: boolean;
+  payments: SubscriptionPayment[];
+  notices: string[];
+};
+
+export type SubscriptionCheckout = {
+  payment_id: number;
+  order_id: string;
+  amount_paise: number;
+  currency: string;
+  key_id: string;
+  facility_name: string;
+  plan_name: string;
+  description: string;
+  prefill_email: string;
+};
+
+export type PlatformSubscription = {
+  id: number;
+  facility_id: number;
+  facility_name: string;
+  facility_active: boolean;
+  status: string;
+  plan_name: string | null;
+  billing_interval: string | null;
+  price_paise: number | null;
+  currency: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  grace_period_end: string | null;
+  owner_user_id: number | null;
+};
+
+export type PlatformPayment = SubscriptionPayment & {
+  facility_id: number;
+  facility_name: string;
+};
+
+export type PlatformAuditEvent = {
+  id: number;
+  actor_user_id: number | null;
+  action: string;
+  resource_type: string;
+  resource_id: number | null;
+  details: string | null;
+  created_at: string;
+};
+
+export type PlatformWebhookEvent = {
+  id: number;
+  gateway_event_id: string;
+  gateway: string;
+  event_type: string;
+  payload_sha256: string;
+  processing_status: string;
+  received_at: string;
+  processed_at: string | null;
 };
 
 export type AdminUser = {
@@ -231,6 +332,10 @@ export function createBooking(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getBookingCheckInCode(bookingId: number) {
+  return request<{ verification_code: string }>(`/bookings/${bookingId}/check-in-code`);
 }
 
 export function uploadBookingDocuments(bookingId: number, files: File[]) {
@@ -342,7 +447,7 @@ export function getManagedFacilities() {
   return request<Facility[]>("/admin/facilities");
 }
 
-export function createFacility(payload: Omit<Facility, "id" | "is_active">) {
+export function submitFacilityOnboarding(payload: Omit<Facility, "id" | "is_active">) {
   return request<Facility>("/facilities", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -409,6 +514,21 @@ export function cancelManagedBooking(bookingId: number) {
   return request<AdminBooking>(`/admin/bookings/${bookingId}/cancel`, { method: "POST" });
 }
 
+export function confirmManagedBooking(bookingId: number) {
+  return request<AdminBooking>(`/admin/bookings/${bookingId}/confirm`, { method: "POST" });
+}
+
+export function rejectManagedBooking(bookingId: number, reason: string) {
+  return request<AdminBooking>(`/admin/bookings/${bookingId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function completeManagedBooking(bookingId: number) {
+  return request<AdminBooking>(`/admin/bookings/${bookingId}/complete`, { method: "POST" });
+}
+
 export function recordManagedBookingPayment(bookingId: number, reference: string) {
   return request<Booking>(`/bookings/${bookingId}/payment`, {
     method: "POST",
@@ -433,11 +553,84 @@ export function getManagedUsers(pagination: { limit?: number; offset?: number } 
 
 export function updateManagedUser(
   userId: number,
-  payload: { is_active?: boolean; role?: "patient" | "facility_staff"; facility_id?: number }
+  payload: { is_active?: boolean; role?: "patient" | "facility_staff"; facility_id?: number | null }
 ) {
   return request<AdminUser>(`/admin/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getFacilitySubscription() {
+  return request<FacilitySubscription>("/facility/subscription");
+}
+
+export function getSubscriptionPlans() {
+  return request<SubscriptionPlan[]>("/facility/subscription/plans");
+}
+
+export function startSubscriptionCheckout(planId: number) {
+  return request<SubscriptionCheckout>("/facility/subscription/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId }),
+  });
+}
+
+export function getPlatformSubscriptionPlans() {
+  return request<SubscriptionPlan[]>("/admin/subscription-plans");
+}
+
+export function createPlatformSubscriptionPlan(payload: Omit<SubscriptionPlan, "id">) {
+  return request<SubscriptionPlan>("/admin/subscription-plans", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updatePlatformSubscriptionPlan(
+  planId: number,
+  payload: Partial<Omit<SubscriptionPlan, "id" | "currency">>,
+) {
+  return request<SubscriptionPlan>(`/admin/subscription-plans/${planId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getPlatformSubscriptions() {
+  return request<PlatformSubscription[]>("/admin/subscriptions");
+}
+
+export function getFacilityStaffAccounts(facilityId: number) {
+  return request<AdminUser[]>(`/admin/facilities/${facilityId}/staff`);
+}
+
+export function transferFacilityBillingOwner(facilityId: number, userId: number) {
+  return request<{ message: string; previous_owner_user_id: number | null; owner_user_id: number }>(
+    `/admin/facilities/${facilityId}/owner`,
+    {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    },
+  );
+}
+
+export function getPlatformPayments() {
+  return request<PlatformPayment[]>("/admin/subscription-payments");
+}
+
+export function getPlatformAuditEvents() {
+  return request<PlatformAuditEvent[]>("/admin/audit-events");
+}
+
+export function getPlatformWebhookEvents() {
+  return request<PlatformWebhookEvent[]>("/admin/payment-webhook-events");
+}
+
+export function extendPlatformSubscription(subscriptionId: number, days: number, reason: string) {
+  return request<PlatformSubscription>(`/admin/subscriptions/${subscriptionId}/extend`, {
+    method: "POST",
+    body: JSON.stringify({ days, reason }),
   });
 }
 

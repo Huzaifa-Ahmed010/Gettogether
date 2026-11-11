@@ -1,14 +1,35 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import and_, exists, or_
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.models import Facility, Service
+from app.models import Facility, FacilitySubscription, Service
 from app.schemas.facility import FacilityCreate, FacilityRead, ServiceCreate, ServiceRead, ServiceSearchRead
 from app.api.routes.auth import get_current_user
 from app.core.audit import record_audit_event
+from app.services.subscriptions import require_facility_entitlement
 
 router = APIRouter(prefix="/facilities", tags=["facilities"])
 services_router = APIRouter(prefix="/services", tags=["services"])
+
+
+def subscription_is_entitled(now: datetime):
+    subscription = FacilitySubscription
+    valid_period = and_(
+        subscription.status == "active",
+        subscription.current_period_end > now,
+    )
+    valid_grace = and_(
+        subscription.status.in_(("active", "grace_period")),
+        subscription.grace_period_end >= now,
+    )
+    return (
+        exists()
+        .where(subscription.facility_id == Facility.id)
+        .where(or_(valid_period, valid_grace))
+    )
+
 
 @router.get("", response_model=list[FacilityRead])
 def list_facilities(
@@ -19,7 +40,11 @@ def list_facilities(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Facility).filter(Facility.is_active.is_(True))
+    now = datetime.now(timezone.utc)
+    query = db.query(Facility).filter(
+        Facility.is_active.is_(True),
+        subscription_is_entitled(now),
+    )
     if city:
         query = query.filter(Facility.city.ilike(f"%{city}%"))
     if facility_type:
@@ -59,9 +84,11 @@ def search_services(
     if service_type and service_type not in {"doctor", "diagnostic"}:
         raise HTTPException(422, "service_type must be doctor or diagnostic")
 
+    now = datetime.now(timezone.utc)
     query = db.query(Service, Facility).join(Facility).filter(
         Service.is_active.is_(True),
         Facility.is_active.is_(True),
+        subscription_is_entitled(now),
     )
     if service_type:
         query = query.filter(Service.service_type == service_type)
@@ -96,12 +123,19 @@ def search_services(
 
 @router.post("", response_model=FacilityRead, status_code=201)
 def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if user.role != "platform_admin":
-        raise HTTPException(403, "Platform administrator access is required")
-    facility = Facility(**payload.model_dump())
+    if user.role != "facility_staff":
+        raise HTTPException(403, "Only facility staff can submit a new facility")
+    if user.facility_id is not None:
+        raise HTTPException(409, "This account is already assigned to a facility")
+    facility = Facility(
+        **payload.model_dump(),
+        is_active=False,
+        owner_user_id=user.id,
+    )
     db.add(facility)
     db.flush()
-    record_audit_event(db, user, "facility.created", "facility", facility.id)
+    user.facility_id = facility.id
+    record_audit_event(db, user, "facility.onboarding_submitted", "facility", facility.id)
     db.commit()
     db.refresh(facility)
     return facility
@@ -109,7 +143,11 @@ def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user
 @router.get("/{facility_id}", response_model=FacilityRead)
 def get_facility(facility_id: int, db: Session = Depends(get_db)):
     facility = db.get(Facility, facility_id)
-    if not facility or not facility.is_active:
+    if (
+        not facility
+        or not facility.is_active
+        or not db.query(subscription_is_entitled(datetime.now(timezone.utc))).filter(Facility.id == facility_id).first()
+    ):
         raise HTTPException(404, "Facility not found")
     return facility
 
@@ -121,7 +159,11 @@ def list_services(
     db: Session = Depends(get_db),
 ):
     facility = db.get(Facility, facility_id)
-    if not facility or not facility.is_active:
+    if (
+        not facility
+        or not facility.is_active
+        or not db.query(subscription_is_entitled(datetime.now(timezone.utc))).filter(Facility.id == facility_id).first()
+    ):
         raise HTTPException(404, "Facility not found")
     return (
         db.query(Service)
@@ -137,10 +179,9 @@ def create_service(facility_id: int, payload: ServiceCreate, db: Session = Depen
     facility = db.get(Facility, facility_id)
     if not facility or not facility.is_active:
         raise HTTPException(404, "Facility not found")
-    if user.role != "platform_admin" and not (
-        user.role == "facility_staff" and user.facility_id == facility_id
-    ):
+    if user.role != "facility_staff" or user.facility_id != facility_id:
         raise HTTPException(403, "You are not authorized to manage this facility")
+    require_facility_entitlement(db, facility_id, operational_write=True)
     service = Service(facility_id=facility_id, **payload.model_dump())
     db.add(service)
     db.flush()

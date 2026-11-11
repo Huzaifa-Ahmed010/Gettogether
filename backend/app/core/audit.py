@@ -9,6 +9,7 @@ def record_audit_event(
     action: str,
     resource_type: str,
     resource_id: int | None,
+    details: str | None = None,
 ) -> None:
     db.add(
         AuditEvent(
@@ -16,5 +17,6 @@ def record_audit_event(
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
+            details=details,
         )
     )

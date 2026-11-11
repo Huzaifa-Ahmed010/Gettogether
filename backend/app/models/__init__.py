@@ -4,8 +4,13 @@ from app.models.entities import (
     BookingDocument,
     EmailVerification,
     Facility,
+    FacilitySubscription,
+    PaymentWebhookEvent,
     PasswordReset,
     Service,
+    SubscriptionNotice,
+    SubscriptionPayment,
+    SubscriptionPlan,
     User,
 )
 
@@ -15,7 +20,12 @@ __all__ = [
     "BookingDocument",
     "EmailVerification",
     "Facility",
+    "FacilitySubscription",
+    "PaymentWebhookEvent",
     "PasswordReset",
     "Service",
+    "SubscriptionNotice",
+    "SubscriptionPayment",
+    "SubscriptionPlan",
     "User",
 ]

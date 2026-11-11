@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_use_starttls: bool = True
     smtp_use_ssl: bool = False
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
@@ -72,6 +75,8 @@ class Settings(BaseSettings):
             raise ValueError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
         if bool(self.smtp_host) != bool(self.smtp_from_email):
             raise ValueError("SMTP_HOST and SMTP_FROM_EMAIL must be configured together")
+        if bool(self.razorpay_key_id) != bool(self.razorpay_key_secret):
+            raise ValueError("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be configured together")
         return self
 
     @property

@@ -4,10 +4,14 @@ from fastapi.testclient import TestClient
 
 from app.db.session import SessionLocal
 from app.main import app
-from app.models import Facility, Service
+from app.models import Facility, Service, User
 
 
-def test_service_and_facility_search(platform_admin_headers):
+def test_service_and_facility_search(
+    platform_admin_headers,
+    account_factory,
+    grant_facility_entitlement,
+):
     suffix = uuid4().hex[:8]
     facility_name = f"Search Directory Medical Center {suffix}"
     provider_name = f"Dr Search Provider {suffix}"
@@ -16,6 +20,7 @@ def test_service_and_facility_search(platform_admin_headers):
 
     with TestClient(app) as client:
         try:
+            _, staff_headers = account_factory("facility_staff")
             facility_response = client.post(
                 "/api/v1/facilities",
                 json={
@@ -25,10 +30,16 @@ def test_service_and_facility_search(platform_admin_headers):
                     "city": "Searchville",
                     "phone": "555-0100",
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert facility_response.status_code == 201
             facility_id = facility_response.json()["id"]
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
+            grant_facility_entitlement(facility_id)
 
             service_response = client.post(
                 f"/api/v1/facilities/{facility_id}/services",
@@ -39,7 +50,7 @@ def test_service_and_facility_search(platform_admin_headers):
                     "provider_name": provider_name,
                     "fee_paise": 250000,
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert service_response.status_code == 201
             second_service_response = client.post(
@@ -51,7 +62,7 @@ def test_service_and_facility_search(platform_admin_headers):
                     "provider_name": f"Dr Another Provider {suffix}",
                     "fee_paise": 150000,
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert second_service_response.status_code == 201
 
@@ -130,6 +141,10 @@ def test_service_and_facility_search(platform_admin_headers):
             if facility_id is not None:
                 with SessionLocal() as db:
                     db.query(Service).filter(Service.facility_id == facility_id).delete()
+                    db.query(User).filter(User.facility_id == facility_id).update(
+                        {User.facility_id: None},
+                        synchronize_session=False,
+                    )
                     facility = db.get(Facility, facility_id)
                     if facility is not None:
                         db.delete(facility)

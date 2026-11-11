@@ -100,7 +100,8 @@
 .booking-list-card h2{font:700 17px Manrope,sans-serif;margin:5px 0}
 .booking-list-card p{font-size:13px;color:#718483;margin:5px 0}
 .booking-status{font-size:11px;font-weight:700;text-transform:capitalize;border-radius:999px;background:#fff0e2;color:#9c4e1e;padding:6px 10px}
-.booking-status-verified{background:#e3f1ef;color:#07565b}
+.booking-status-confirmed,.booking-status-checked_in,.booking-status-completed{background:#e3f1ef;color:#07565b}
+.booking-status-rejected{background:#fce9e8;color:#963e39}
 .booking-status-cancelled{background:#fce9e8;color:#963e39}
 .booking-list-card>div:nth-child(2){display:flex;flex-direction:column;align-items:flex-end;gap:14px}
 .booking-cancel-button{border:0;padding:0;background:transparent;color:#963e39;font:600 13px 'DM Sans';cursor:pointer}
@@ -150,7 +151,7 @@
 .admin-item h3,.admin-item h4{font:700 15px Manrope,sans-serif;margin:0 0 6px}
 .admin-item p{font-size:12px;color:#718483;margin:6px 0}
 .admin-status{display:inline-block;border-radius:999px;background:#fce9e8;color:#963e39;padding:5px 9px;font-size:10px;font-weight:700;text-transform:capitalize}
-.admin-status.active,.admin-status.verified{background:#e3f1ef;color:#07565b}
+.admin-status.active,.admin-status.confirmed,.admin-status.checked_in,.admin-status.completed{background:#e3f1ef;color:#07565b}
 .admin-item-form{box-shadow:none;padding:0;border:0;border-radius:0}
 .admin-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
 .admin-actions .primary-link,.admin-actions .secondary-button,.admin-actions .danger-button{grid-column:auto}

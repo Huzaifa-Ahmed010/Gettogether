@@ -24,13 +24,19 @@ def add_user(db, role, *, facility_id=None):
     return user, {"Authorization": f"Bearer {create_access_token(user)}"}
 
 
-def test_booking_permissions_creation_and_staff_verification(platform_admin_headers):
+def test_booking_permissions_creation_and_staff_verification(
+    platform_admin_headers,
+    grant_facility_entitlement,
+):
     suffix = uuid4().hex
     facility_id = None
     patient_id = staff_id = other_staff_id = None
 
     with TestClient(app) as client:
         try:
+            with SessionLocal() as db:
+                staff, staff_headers = add_user(db, "facility_staff")
+                staff_id = staff.id
             facility_response = client.post(
                 "/api/v1/facilities",
                 json={
@@ -40,10 +46,17 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                     "city": "Booking City",
                     "phone": "555-0110",
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert facility_response.status_code == 201
             facility_id = facility_response.json()["id"]
+            assert facility_response.json()["is_active"] is False
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
+            grant_facility_entitlement(facility_id)
             service_response = client.post(
                 f"/api/v1/facilities/{facility_id}/services",
                 json={
@@ -53,7 +66,7 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                     "provider_name": "Dr Example",
                     "fee_paise": 10000,
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert service_response.status_code == 201
             service_id = service_response.json()["id"]
@@ -61,8 +74,6 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
             with SessionLocal() as db:
                 patient, patient_headers = add_user(db, "patient")
                 patient_id = patient.id
-                staff, staff_headers = add_user(db, "facility_staff", facility_id=facility_id)
-                staff_id = staff.id
                 other_staff, other_staff_headers = add_user(db, "facility_staff")
                 other_staff_id = other_staff.id
 
@@ -97,7 +108,8 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
             assert created.status_code == 201
             booking = created.json()
             booking_id = booking["id"]
-            assert len(booking["verification_code"]) == 6
+            assert booking["status"] == "requested"
+            assert "verification_code" not in booking
             assert booking["payment_status"] == "unpaid"
             assert booking["payment_due_paise"] == 10000
             assert "patient_email" not in booking
@@ -105,7 +117,7 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 stored_booking = db.get(Booking, booking_id)
                 assert stored_booking is not None
                 assert stored_booking.patient_user_id == patient_id
-                assert len(stored_booking.verification_code) == 64
+                assert stored_booking.verification_code is None
                 assert db.query(AuditEvent).filter(
                     AuditEvent.action == "booking.created",
                     AuditEvent.resource_id == booking_id,
@@ -134,19 +146,47 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 f"/api/v1/bookings/{booking_id}",
                 headers=other_staff_headers,
             ).status_code == 403
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}/check-in-code",
+                headers=patient_headers,
+            ).status_code == 409
             assert client.post(
                 "/api/v1/bookings/verify",
-                json={"code": booking["verification_code"]},
+                json={"code": "123456"},
                 headers=patient_headers,
             ).status_code == 403
             assert client.post(
                 "/api/v1/bookings/verify",
-                json={"code": booking["verification_code"]},
-                headers=other_staff_headers,
+                json={"code": "123456"},
+                headers=platform_admin_headers,
             ).status_code == 403
+            unrelated_check_in = client.post(
+                "/api/v1/bookings/verify",
+                json={"code": "123456"},
+                headers=other_staff_headers,
+            )
+            assert unrelated_check_in.status_code == 200
+            assert unrelated_check_in.json()["valid"] is False
+            confirmed = client.post(
+                f"/api/v1/admin/bookings/{booking_id}/confirm",
+                headers=staff_headers,
+            )
+            assert confirmed.status_code == 200
+            assert confirmed.json()["status"] == "confirmed"
+            patient_code = client.get(
+                f"/api/v1/bookings/{booking_id}/check-in-code",
+                headers=patient_headers,
+            )
+            assert patient_code.status_code == 200
+            check_in_code = patient_code.json()["verification_code"]
+            assert len(check_in_code) == 6
+            assert client.get(
+                f"/api/v1/bookings/{booking_id}/check-in-code",
+                headers=other_staff_headers,
+            ).status_code == 404
             unpaid_check_in = client.post(
                 "/api/v1/bookings/verify",
-                json={"code": booking["verification_code"]},
+                json={"code": check_in_code},
                 headers=staff_headers,
             )
             assert unpaid_check_in.status_code == 200
@@ -156,6 +196,11 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 f"/api/v1/bookings/{booking_id}/payment",
                 json={"reference": "patient-cannot-collect"},
                 headers=patient_headers,
+            ).status_code == 403
+            assert client.post(
+                f"/api/v1/bookings/{booking_id}/payment",
+                json={"reference": "admin-cannot-collect"},
+                headers=platform_admin_headers,
             ).status_code == 403
             assert client.post(
                 f"/api/v1/bookings/{booking_id}/payment",
@@ -191,20 +236,26 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
 
             verified = client.post(
                 "/api/v1/bookings/verify",
-                json={"code": booking["verification_code"]},
+                json={"code": check_in_code},
                 headers=staff_headers,
             )
             assert verified.status_code == 200
             assert verified.json()["valid"] is True
             assert client.post(
                 "/api/v1/bookings/verify",
-                json={"code": booking["verification_code"]},
+                json={"code": check_in_code},
                 headers=staff_headers,
             ).json()["valid"] is False
             assert client.get(
                 "/api/v1/bookings",
                 headers=patient_headers,
-            ).json()[0]["status"] == "verified"
+            ).json()[0]["status"] == "checked_in"
+            completed = client.post(
+                f"/api/v1/admin/bookings/{booking_id}/complete",
+                headers=staff_headers,
+            )
+            assert completed.status_code == 200
+            assert completed.json()["status"] == "completed"
 
             second_booking = client.post(
                 "/api/v1/bookings",
@@ -216,6 +267,15 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
             )
             assert second_booking.status_code == 201
             second_booking_id = second_booking.json()["id"]
+            confirmation = client.post(
+                f"/api/v1/admin/bookings/{second_booking_id}/confirm",
+                headers=staff_headers,
+            )
+            assert confirmation.status_code == 200
+            second_code = client.get(
+                f"/api/v1/bookings/{second_booking_id}/check-in-code",
+                headers=patient_headers,
+            ).json()["verification_code"]
             with SessionLocal() as db:
                 stored_booking = db.get(Booking, second_booking_id)
                 assert stored_booking is not None
@@ -223,7 +283,7 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 db.commit()
             early_check_in = client.post(
                 "/api/v1/bookings/verify",
-                json={"code": second_booking.json()["verification_code"]},
+                json={"code": second_code},
                 headers=staff_headers,
             )
             assert early_check_in.json()["valid"] is False
@@ -235,7 +295,7 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                 db.commit()
             late_check_in = client.post(
                 "/api/v1/bookings/verify",
-                json={"code": second_booking.json()["verification_code"]},
+                json={"code": second_code},
                 headers=staff_headers,
             )
             assert late_check_in.json()["valid"] is False
@@ -276,13 +336,19 @@ def test_booking_permissions_creation_and_staff_verification(platform_admin_head
                         db.delete(facility)
                 db.commit()
 
-def test_booking_documents_are_private_validated_and_downloadable(platform_admin_headers):
+def test_booking_documents_are_private_validated_and_downloadable(
+    platform_admin_headers,
+    grant_facility_entitlement,
+):
     suffix = uuid4().hex
     facility_id = booking_id = None
     user_ids: list[int] = []
 
     with TestClient(app) as client:
         try:
+            with SessionLocal() as db:
+                staff, staff_headers = add_user(db, "facility_staff")
+                user_ids.append(staff.id)
             facility_response = client.post(
                 "/api/v1/facilities",
                 json={
@@ -292,10 +358,17 @@ def test_booking_documents_are_private_validated_and_downloadable(platform_admin
                     "city": "Document City",
                     "phone": "555-0120",
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert facility_response.status_code == 201
             facility_id = facility_response.json()["id"]
+            assert facility_response.json()["is_active"] is False
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
+            grant_facility_entitlement(facility_id)
             service_response = client.post(
                 f"/api/v1/facilities/{facility_id}/services",
                 json={
@@ -305,16 +378,15 @@ def test_booking_documents_are_private_validated_and_downloadable(platform_admin
                     "provider_name": "Dr Document",
                     "fee_paise": 0,
                 },
-                headers=platform_admin_headers,
+                headers=staff_headers,
             )
             assert service_response.status_code == 201
 
             with SessionLocal() as db:
                 patient, patient_headers = add_user(db, "patient")
-                staff, staff_headers = add_user(db, "facility_staff", facility_id=facility_id)
                 other_staff, other_staff_headers = add_user(db, "facility_staff")
                 other_patient, other_patient_headers = add_user(db, "patient")
-                user_ids = [patient.id, staff.id, other_staff.id, other_patient.id]
+                user_ids.extend([patient.id, other_staff.id, other_patient.id])
 
             created = client.post(
                 "/api/v1/bookings",
