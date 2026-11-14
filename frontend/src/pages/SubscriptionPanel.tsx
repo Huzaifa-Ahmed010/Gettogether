@@ -86,10 +86,12 @@ function formatDate(value: string | null) {
 export default function SubscriptionPanel({
   platformAdmin,
   facilityAvailable = true,
+  subscriptionsEnabled,
   userId,
 }: {
   platformAdmin: boolean;
   facilityAvailable?: boolean;
+  subscriptionsEnabled: boolean;
   userId?: number;
 }) {
   const [facilitySubscription, setFacilitySubscription] = useState<FacilitySubscription | null>(null);
@@ -284,6 +286,9 @@ export default function SubscriptionPanel({
     {!platformAdmin && !facilityAvailable ? <section className="admin-panel">
       <h2>Facility setup required</h2>
       <p>Submit your facility for platform approval before opening its subscription account.</p>
+    </section> : !platformAdmin && !subscriptionsEnabled ? <section className="admin-panel">
+      <div className="admin-panel-heading"><div><p className="eyebrow">FACILITY SUBSCRIPTION</p><h2>Billing is not enabled yet</h2></div></div>
+      <p>Facility subscriptions are temporarily disabled while payment services are being configured. You can manage facility operations without a subscription during setup.</p>
     </section> : platformAdmin ? <>
       <section className="admin-panel">
         <div className="admin-panel-heading"><div><p className="eyebrow">BILLING SETUP</p><h2>Subscription plans</h2></div></div>

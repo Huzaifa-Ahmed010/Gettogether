@@ -33,6 +33,7 @@ def test_subscription_plans_checkout_and_signed_webhook(
     monkeypatch.setattr(settings, "razorpay_key_id", "test-key")
     monkeypatch.setattr(settings, "razorpay_key_secret", "test-secret")
     monkeypatch.setattr(settings, "razorpay_webhook_secret", "test-webhook-secret")
+    monkeypatch.setattr(settings, "subscriptions_enabled", True)
 
     import app.api.routes.subscriptions as subscription_routes
 
@@ -262,6 +263,139 @@ def test_billing_calendar_and_grace_period_states():
     assert effective_subscription_status(subscription, now) == "grace_period"
     subscription.grace_period_end = now - timedelta(seconds=1)
     assert effective_subscription_status(subscription, now) == "expired"
+
+
+def test_facility_operations_work_while_subscriptions_are_disabled(
+    platform_admin_headers,
+    account_factory,
+    monkeypatch,
+):
+    suffix = uuid4().hex
+    staff_id, staff_headers = account_factory("facility_staff")
+    patient_id, patient_headers = account_factory("patient")
+    facility_id = service_id = booking_id = None
+
+    with TestClient(app) as client:
+        try:
+            onboarding = client.post(
+                "/api/v1/facilities",
+                json={
+                    "name": f"Unbilled Facility {suffix}",
+                    "facility_type": "hospital",
+                    "address": "8 Setup Road",
+                    "city": "Setup City",
+                    "phone": "",
+                },
+                headers=staff_headers,
+            )
+            assert onboarding.status_code == 201
+            facility_id = onboarding.json()["id"]
+            assert client.patch(
+                f"/api/v1/admin/facilities/{facility_id}",
+                json={"is_active": True},
+                headers=platform_admin_headers,
+            ).status_code == 200
+
+            service_response = client.post(
+                f"/api/v1/facilities/{facility_id}/services",
+                json={
+                    "name": f"Consultation {suffix}",
+                    "category": "General medicine",
+                    "service_type": "doctor",
+                    "provider_name": "Dr Setup",
+                    "fee_paise": 10000,
+                },
+                headers=staff_headers,
+            )
+            assert service_response.status_code == 201
+            service_id = service_response.json()["id"]
+
+            assert facility_id in {
+                row["id"] for row in client.get("/api/v1/facilities").json()
+            }
+            assert client.get(
+                f"/api/v1/facilities/{facility_id}/services"
+            ).status_code == 200
+
+            booking_response = client.post(
+                "/api/v1/bookings",
+                json={
+                    "facility_id": facility_id,
+                    "service_id": service_id,
+                    "appointment_at": (
+                        datetime.now(timezone.utc) + timedelta(days=2)
+                    ).isoformat(),
+                    "payment_method": "physical",
+                },
+                headers=patient_headers,
+            )
+            assert booking_response.status_code == 201
+            booking_id = booking_response.json()["id"]
+
+            with SessionLocal() as db:
+                payment_count = db.query(SubscriptionPayment).filter(
+                    SubscriptionPayment.facility_id == facility_id
+                ).count()
+            checkout = client.post(
+                "/api/v1/facility/subscription/checkout",
+                json={"plan_id": 1},
+                headers=staff_headers,
+            )
+            assert checkout.status_code == 503
+            with SessionLocal() as db:
+                assert db.query(SubscriptionPayment).filter(
+                    SubscriptionPayment.facility_id == facility_id
+                ).count() == payment_count
+
+            with SessionLocal() as db:
+                subscription = db.query(FacilitySubscription).filter(
+                    FacilitySubscription.facility_id == facility_id
+                ).first()
+                if subscription is None:
+                    db.add(
+                        FacilitySubscription(
+                            facility_id=facility_id,
+                            status="pending_payment",
+                        )
+                    )
+                else:
+                    subscription.status = "pending_payment"
+                    subscription.current_period_end = None
+                    subscription.grace_period_end = None
+                db.commit()
+
+            monkeypatch.setattr(settings, "subscriptions_enabled", True)
+            gated_service = client.post(
+                f"/api/v1/facilities/{facility_id}/services",
+                json={
+                    "name": f"Subscription-gated service {suffix}",
+                    "category": "General medicine",
+                    "service_type": "doctor",
+                    "provider_name": "Dr Setup",
+                    "fee_paise": 10000,
+                },
+                headers=staff_headers,
+            )
+            assert gated_service.status_code == 403
+            assert "active facility subscription" in gated_service.json()["detail"]
+        finally:
+            with SessionLocal() as db:
+                if booking_id:
+                    db.query(Booking).filter(Booking.id == booking_id).delete()
+                if service_id:
+                    db.query(Service).filter(Service.id == service_id).delete()
+                if facility_id:
+                    db.query(FacilitySubscription).filter(
+                        FacilitySubscription.facility_id == facility_id
+                    ).delete()
+                    facility = db.get(Facility, facility_id)
+                    if facility:
+                        db.delete(facility)
+                for user_id in (staff_id, patient_id):
+                    user = db.get(User, user_id)
+                    if user:
+                        user.facility_id = None
+                db.commit()
 
 
 def test_staff_facility_onboarding_and_booking_rejection(

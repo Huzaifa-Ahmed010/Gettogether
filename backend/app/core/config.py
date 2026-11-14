@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     allowed_hosts: str = "localhost,127.0.0.1,testserver"
     trusted_proxy_ips: str = ""
     redis_url: str = ""
+    subscriptions_enabled: bool = False
     access_token_expire_minutes: int = Field(default=30, gt=0, le=1440)
     email_otp_expire_minutes: int = Field(default=10, gt=0, le=60)
     password_reset_expire_minutes: int = Field(default=15, gt=0, le=60)

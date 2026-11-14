@@ -121,6 +121,8 @@ def _create_subscription_checkout(
     db: Session,
     user: User,
 ):
+    if not settings.subscriptions_enabled:
+        raise HTTPException(503, "Subscription billing is temporarily disabled")
     facility = require_staff_facility(db, user)
     if facility.owner_user_id != user.id:
         raise HTTPException(403, "Only the facility billing owner can initiate subscription payments")

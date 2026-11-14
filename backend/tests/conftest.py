@@ -28,6 +28,7 @@ def pytest_sessionstart(session):
 def strong_test_secret(monkeypatch):
     monkeypatch.setattr(settings, "secret_key", "test-secret-" + "x" * 64)
     monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "subscriptions_enabled", False)
     monkeypatch.setattr(settings, "smtp_host", "")
     monkeypatch.setattr(settings, "smtp_from_email", "")
 

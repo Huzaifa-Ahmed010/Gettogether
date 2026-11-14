@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, exists, or_
+from sqlalchemy import and_, exists, or_, true
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models import Facility, FacilitySubscription, Service
 from app.schemas.facility import FacilityCreate, FacilityRead, ServiceCreate, ServiceRead, ServiceSearchRead
 from app.api.routes.auth import get_current_user
 from app.core.audit import record_audit_event
+from app.core.config import settings
 from app.services.subscriptions import require_facility_entitlement
 
 router = APIRouter(prefix="/facilities", tags=["facilities"])
@@ -15,6 +16,8 @@ services_router = APIRouter(prefix="/services", tags=["services"])
 
 
 def subscription_is_entitled(now: datetime):
+    if not settings.subscriptions_enabled:
+        return true()
     subscription = FacilitySubscription
     valid_period = and_(
         subscription.status == "active",

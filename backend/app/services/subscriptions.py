@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
+from app.core.config import settings
 from app.models import Facility, FacilitySubscription, SubscriptionNotice, User
 
 GRACE_PERIOD_DAYS = 7
@@ -50,6 +51,8 @@ def facility_accepts_requests(db: Session, facility_id: int) -> bool:
     facility = db.get(Facility, facility_id)
     if facility is None or not facility.is_active:
         return False
+    if not settings.subscriptions_enabled:
+        return True
     subscription = (
         db.query(FacilitySubscription)
         .filter(FacilitySubscription.facility_id == facility_id)
@@ -71,6 +74,8 @@ def require_facility_entitlement(
         return facility
     if not facility.is_active:
         raise HTTPException(403, "This facility is not active on the platform")
+    if not settings.subscriptions_enabled:
+        return facility
     subscription = (
         db.query(FacilitySubscription)
         .filter(FacilitySubscription.facility_id == facility_id)

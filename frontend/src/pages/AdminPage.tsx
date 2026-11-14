@@ -34,6 +34,7 @@ import {
 import SubscriptionPanel from "./SubscriptionPanel";
 
 type AdminTab = "overview" | "facilities" | "directory" | "bookings" | "accounts" | "subscriptions";
+const subscriptionsEnabled = import.meta.env.VITE_SUBSCRIPTIONS_ENABLED === "true";
 
 function errorText(error: unknown) {
   return error instanceof Error
@@ -621,6 +622,7 @@ export default function AdminPage() {
       {tab === "subscriptions" && <SubscriptionPanel
         platformAdmin={isPlatformAdmin}
         facilityAvailable={facilities.length > 0}
+        subscriptionsEnabled={subscriptionsEnabled}
         userId={user.id}
       />}
 
