@@ -14,7 +14,7 @@ from app.api.routes.auth import get_current_user
 from app.core.audit import record_audit_event
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Booking, BookingDocument, Facility, Service, User
+from app.models import Booking, BookingDocument, Facility, FacilityReview, Service, User
 from app.schemas.booking import (
     BookingCheckInCode,
     BookingCreate,
@@ -27,6 +27,7 @@ from app.schemas.booking import (
     VerifyRead,
     VerifyRequest,
 )
+from app.schemas.review import FacilityReviewCreate, FacilityReviewRead
 from app.services.subscriptions import require_facility_entitlement
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -297,6 +298,61 @@ def list_my_bookings(
         }
         for booking, facility_name, service_name, provider_name in rows
     ]
+
+
+@router.get("/reviews/mine", response_model=list[FacilityReviewRead])
+def list_my_facility_reviews(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "patient":
+        raise HTTPException(403, "Patient access is required to view your reviews")
+    return (
+        db.query(FacilityReview)
+        .filter(FacilityReview.patient_user_id == user.id)
+        .order_by(FacilityReview.created_at.desc(), FacilityReview.id.desc())
+        .all()
+    )
+
+
+@router.post("/{booking_id}/review", response_model=FacilityReviewRead, status_code=201)
+def create_facility_review(
+    booking_id: int,
+    payload: FacilityReviewCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "patient":
+        raise HTTPException(403, "Only patients can review a facility")
+    booking = (
+        db.query(Booking)
+        .filter(Booking.id == booking_id, Booking.patient_user_id == user.id)
+        .with_for_update()
+        .first()
+    )
+    if booking is None:
+        raise HTTPException(404, "Completed appointment not found")
+    if booking.status != "completed":
+        raise HTTPException(409, "You can review a facility after the appointment is completed")
+    if db.query(FacilityReview.id).filter(FacilityReview.booking_id == booking.id).first():
+        raise HTTPException(409, "You have already reviewed this appointment")
+    review = FacilityReview(
+        booking_id=booking.id,
+        facility_id=booking.facility_id,
+        patient_user_id=user.id,
+        rating=payload.rating,
+        comment=payload.comment,
+    )
+    db.add(review)
+    try:
+        db.flush()
+        record_audit_event(db, user, "facility.review_created", "facility_review", review.id)
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, "You have already reviewed this appointment") from error
+    db.refresh(review)
+    return review
 
 
 @router.get("/{booking_id}", response_model=BookingRead)

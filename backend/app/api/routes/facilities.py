@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, exists, or_, true
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
+from sqlalchemy import and_, exists, func, or_, true
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.models import Facility, FacilitySubscription, Service
+from app.models import Facility, FacilityReview, FacilitySubscription, Service
 from app.schemas.facility import FacilityCreate, FacilityRead, ServiceCreate, ServiceRead, ServiceSearchRead
+from app.schemas.review import FacilityReviewSummary
 from app.api.routes.auth import get_current_user
 from app.core.audit import record_audit_event
 from app.core.config import settings
@@ -13,6 +15,37 @@ from app.services.subscriptions import require_facility_entitlement
 
 router = APIRouter(prefix="/facilities", tags=["facilities"])
 services_router = APIRouter(prefix="/services", tags=["services"])
+MAX_FACILITY_IMAGE_SIZE = 5 * 1024 * 1024
+IMAGE_SIGNATURES = (
+    ("image/jpeg", b"\xff\xd8\xff"),
+    ("image/png", b"\x89PNG\r\n\x1a\n"),
+)
+
+
+async def read_facility_image(file: UploadFile) -> tuple[bytes, str]:
+    content = await file.read(MAX_FACILITY_IMAGE_SIZE + 1)
+    if len(content) > MAX_FACILITY_IMAGE_SIZE:
+        raise HTTPException(413, "Images must be 5 MB or smaller")
+    for media_type, signature in IMAGE_SIGNATURES:
+        if content.startswith(signature):
+            return content, media_type
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return content, "image/webp"
+    raise HTTPException(415, "Upload a valid JPEG, PNG, or WebP image")
+
+
+def image_response(content: bytes | None, media_type: str | None) -> Response:
+    if content is None or media_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(404, "Image not found")
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 def subscription_is_entitled(now: datetime):
@@ -142,6 +175,150 @@ def create_facility(payload: FacilityCreate, db: Session = Depends(get_db), user
     db.commit()
     db.refresh(facility)
     return facility
+
+
+@router.put("/{facility_id}/image")
+async def upload_facility_image(
+    facility_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    facility = db.get(Facility, facility_id)
+    if facility is None:
+        raise HTTPException(404, "Facility not found")
+    if user.role != "facility_staff" or user.facility_id != facility_id:
+        raise HTTPException(403, "You are not authorized to update this facility image")
+    content, media_type = await read_facility_image(file)
+    facility.image_content = content
+    facility.image_media_type = media_type
+    record_audit_event(db, user, "facility.image_updated", "facility", facility.id)
+    db.commit()
+    return {"message": "Facility image updated."}
+
+
+@router.delete("/{facility_id}/image")
+def delete_facility_image(
+    facility_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    facility = db.get(Facility, facility_id)
+    if facility is None:
+        raise HTTPException(404, "Facility not found")
+    if user.role != "facility_staff" or user.facility_id != facility_id:
+        raise HTTPException(403, "You are not authorized to update this facility image")
+    facility.image_content = None
+    facility.image_media_type = None
+    record_audit_event(db, user, "facility.image_removed", "facility", facility.id)
+    db.commit()
+    return {"message": "Facility image removed."}
+
+
+@router.get("/{facility_id}/image")
+def get_facility_image(facility_id: int, db: Session = Depends(get_db)):
+    facility = db.get(Facility, facility_id)
+    if facility is None or not facility.is_active:
+        raise HTTPException(404, "Facility not found")
+    return image_response(facility.image_content, facility.image_media_type)
+
+
+@router.put("/{facility_id}/services/{service_id}/image")
+async def upload_service_image(
+    facility_id: int,
+    service_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    service = (
+        db.query(Service)
+        .filter(Service.id == service_id, Service.facility_id == facility_id)
+        .first()
+    )
+    if service is None:
+        raise HTTPException(404, "Service not found")
+    if user.role != "facility_staff" or user.facility_id != facility_id:
+        raise HTTPException(403, "You are not authorized to update this service image")
+    require_facility_entitlement(db, facility_id, operational_write=True)
+    content, media_type = await read_facility_image(file)
+    service.image_content = content
+    service.image_media_type = media_type
+    record_audit_event(db, user, "service.image_updated", "service", service.id)
+    db.commit()
+    return {"message": "Service image updated."}
+
+
+@router.delete("/{facility_id}/services/{service_id}/image")
+def delete_service_image(
+    facility_id: int,
+    service_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    service = (
+        db.query(Service)
+        .filter(Service.id == service_id, Service.facility_id == facility_id)
+        .first()
+    )
+    if service is None:
+        raise HTTPException(404, "Service not found")
+    if user.role != "facility_staff" or user.facility_id != facility_id:
+        raise HTTPException(403, "You are not authorized to update this service image")
+    require_facility_entitlement(db, facility_id, operational_write=True)
+    service.image_content = None
+    service.image_media_type = None
+    record_audit_event(db, user, "service.image_removed", "service", service.id)
+    db.commit()
+    return {"message": "Service image removed."}
+
+
+@router.get("/{facility_id}/services/{service_id}/image")
+def get_service_image(facility_id: int, service_id: int, db: Session = Depends(get_db)):
+    service = (
+        db.query(Service)
+        .join(Facility, Facility.id == Service.facility_id)
+        .filter(
+            Service.id == service_id,
+            Service.facility_id == facility_id,
+            Service.is_active.is_(True),
+            Facility.is_active.is_(True),
+        )
+        .first()
+    )
+    if service is None:
+        raise HTTPException(404, "Service not found")
+    return image_response(service.image_content, service.image_media_type)
+
+
+@router.get("/{facility_id}/reviews", response_model=FacilityReviewSummary)
+def list_facility_reviews(
+    facility_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    facility = db.get(Facility, facility_id)
+    if facility is None or not facility.is_active:
+        raise HTTPException(404, "Facility not found")
+    ratings = db.query(
+        func.avg(FacilityReview.rating),
+        func.count(FacilityReview.id),
+    ).filter(FacilityReview.facility_id == facility_id).one()
+    reviews = (
+        db.query(FacilityReview)
+        .filter(FacilityReview.facility_id == facility_id)
+        .order_by(FacilityReview.created_at.desc(), FacilityReview.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return FacilityReviewSummary(
+        average_rating=round(float(ratings[0]), 1) if ratings[0] is not None else None,
+        ratings_count=ratings[1],
+        reviews=reviews,
+    )
+
 
 @router.get("/{facility_id}", response_model=FacilityRead)
 def get_facility(facility_id: int, db: Session = Depends(get_db)):

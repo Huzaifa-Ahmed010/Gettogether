@@ -77,6 +77,23 @@ export type Facility = {
   is_active: boolean;
 };
 
+export type FacilityReview = {
+  id: number;
+  booking_id: number;
+  facility_id: number;
+  rating: number;
+  comment: string;
+  created_at: string;
+};
+
+export type PublicFacilityReview = Omit<FacilityReview, "booking_id">;
+
+export type FacilityReviewSummary = {
+  average_rating: number | null;
+  ratings_count: number;
+  reviews: PublicFacilityReview[];
+};
+
 export type Service = {
   id: number;
   facility_id: number;
@@ -424,6 +441,70 @@ export function searchServices(filters: {
 
 export function getFacility(facilityId: number) {
   return request<Facility>(`/facilities/${facilityId}`);
+}
+
+export function getFacilityImageUrl(facilityId: number) {
+  return `${API_BASE}/facilities/${facilityId}/image`;
+}
+
+export function getServiceImageUrl(facilityId: number, serviceId: number) {
+  return `${API_BASE}/facilities/${facilityId}/services/${serviceId}/image`;
+}
+
+export function uploadFacilityImage(facilityId: number, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<{ message: string }>(`/facilities/${facilityId}/image`, {
+    method: "PUT",
+    body: formData,
+  });
+}
+
+export function deleteFacilityImage(facilityId: number) {
+  return request<{ message: string }>(`/facilities/${facilityId}/image`, {
+    method: "DELETE",
+  });
+}
+
+export function uploadServiceImage(facilityId: number, serviceId: number, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<{ message: string }>(
+    `/facilities/${facilityId}/services/${serviceId}/image`,
+    { method: "PUT", body: formData },
+  );
+}
+
+export function deleteServiceImage(facilityId: number, serviceId: number) {
+  return request<{ message: string }>(
+    `/facilities/${facilityId}/services/${serviceId}/image`,
+    { method: "DELETE" },
+  );
+}
+
+export function getFacilityReviews(
+  facilityId: number,
+  pagination: { limit?: number; offset?: number } = {},
+) {
+  const params = new URLSearchParams({
+    limit: String(pagination.limit ?? 20),
+    offset: String(pagination.offset ?? 0),
+  });
+  return request<FacilityReviewSummary>(`/facilities/${facilityId}/reviews?${params}`);
+}
+
+export function getMyFacilityReviews() {
+  return request<FacilityReview[]>("/bookings/reviews/mine");
+}
+
+export function createFacilityReview(
+  bookingId: number,
+  payload: { rating: number; comment: string },
+) {
+  return request<FacilityReview>(`/bookings/${bookingId}/review`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getFacilityServices(

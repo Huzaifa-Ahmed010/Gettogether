@@ -1,10 +1,14 @@
 import { ClipboardPlus, MapPin } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { Facility } from "../api/client";
+import { getFacilityImageUrl, type Facility } from "../api/client";
 
 export default function FacilityCard({ facility }: { facility: Facility }) {
+  const [imageUnavailable, setImageUnavailable] = useState(false);
   return <article className="facility-card">
-    <div className="facility-illustration"><ClipboardPlus size={38} /></div>
+    <div className="facility-illustration">{imageUnavailable
+      ? <ClipboardPlus size={38} />
+      : <img src={getFacilityImageUrl(facility.id)} alt={`${facility.name} facility`} onError={() => setImageUnavailable(true)} />}</div>
     <div className="facility-info">
       <span className="facility-type">{facility.facility_type === "hospital" ? "HOSPITAL" : "DIAGNOSTIC CENTER"}</span>
       <h3>{facility.name}</h3>

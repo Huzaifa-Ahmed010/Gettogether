@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   cancelBooking,
+  createFacilityReview,
   downloadBookingDocument,
   getBookingCheckInCode,
   getBookingDocuments,
+  getMyFacilityReviews,
   getMyBookings,
   type Booking,
   type BookingDocument,
+  type FacilityReview,
 } from "../api/client";
 import { useAuth } from "../components/AuthContext";
 import SiteLayout from "../components/SiteLayout";
@@ -25,6 +28,11 @@ export default function MyBookingsPage() {
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<number | null>(null);
   const [checkInCodes, setCheckInCodes] = useState<Record<number, string>>({});
   const [loadingCodeId, setLoadingCodeId] = useState<number | null>(null);
+  const [facilityReviews, setFacilityReviews] = useState<FacilityReview[]>([]);
+  const [reviewsLoaded, setReviewsLoaded] = useState(false);
+  const [reviewRatings, setReviewRatings] = useState<Record<number, number>>({});
+  const [reviewComments, setReviewComments] = useState<Record<number, string>>({});
+  const [submittingReviewId, setSubmittingReviewId] = useState<number | null>(null);
 
   async function loadCheckInCode(bookingId: number) {
     setActionError("");
@@ -89,6 +97,25 @@ export default function MyBookingsPage() {
     }
   }
 
+  async function submitReview(event: React.FormEvent<HTMLFormElement>, booking: Booking) {
+    event.preventDefault();
+    setActionError("");
+    setSubmittingReviewId(booking.id);
+    try {
+      const review = await createFacilityReview(booking.id, {
+        rating: reviewRatings[booking.id] ?? 5,
+        comment: reviewComments[booking.id] ?? "",
+      });
+      setFacilityReviews((current) => [...current, review]);
+    } catch (reason) {
+      setActionError(reason instanceof Error
+        ? reason.message.replace(/^API error \d+: /, "")
+        : "Unable to submit your rating.");
+    } finally {
+      setSubmittingReviewId(null);
+    }
+  }
+
   useEffect(() => {
     let active = true;
     if (!user) {
@@ -96,7 +123,28 @@ export default function MyBookingsPage() {
       return () => { active = false; };
     }
     getMyBookings()
-      .then((result) => { if (active) setBookings(result); })
+      .then((result) => {
+        if (!active) return;
+        setBookings(result);
+        if (user.role === "patient") {
+          setReviewsLoaded(false);
+          getMyFacilityReviews()
+            .then((reviews) => {
+              if (active) {
+                setFacilityReviews(reviews);
+                setReviewsLoaded(true);
+              }
+            })
+            .catch((reason: unknown) => {
+              if (active) {
+                setActionError(reason instanceof Error
+                  ? reason.message.replace(/^API error \d+: /, "")
+                  : "Unable to load your submitted ratings.");
+                setReviewsLoaded(true);
+              }
+            });
+        }
+      })
       .catch(() => { if (active) setError("Could not load your appointments. Please sign in again and retry."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -130,6 +178,36 @@ export default function MyBookingsPage() {
                     </li>)}</ul>
                     : <p>No documents uploaded for this appointment.</p>}
               </section>
+              {booking.status === "completed" && user?.role === "patient" && (
+                !reviewsLoaded
+                  ? <p className="review-submitted" role="status">Checking your previous rating…</p>
+                  : facilityReviews.some((review) => review.booking_id === booking.id)
+                  ? <p className="review-submitted" role="status">Thank you. Your verified facility rating has been submitted.</p>
+                  : <form className="facility-review-form" onSubmit={(event) => submitReview(event, booking)}>
+                    <h3>Rate your visit</h3>
+                    <label>Rating
+                      <select
+                        value={reviewRatings[booking.id] ?? 5}
+                        onChange={(event) => setReviewRatings((current) => ({ ...current, [booking.id]: Number(event.target.value) }))}
+                      >
+                        <option value={5}>5 — Excellent</option>
+                        <option value={4}>4 — Very good</option>
+                        <option value={3}>3 — Good</option>
+                        <option value={2}>2 — Fair</option>
+                        <option value={1}>1 — Poor</option>
+                      </select>
+                    </label>
+                    <label>Review (optional)
+                      <textarea
+                        maxLength={1000}
+                        value={reviewComments[booking.id] ?? ""}
+                        onChange={(event) => setReviewComments((current) => ({ ...current, [booking.id]: event.target.value }))}
+                        placeholder="Share your experience. Please don't include private medical information."
+                      />
+                    </label>
+                    <button className="secondary-button" disabled={submittingReviewId === booking.id}>{submittingReviewId === booking.id ? "Submitting…" : "Submit rating"}</button>
+                  </form>
+              )}
             </article>)}</div></>
               : <div className="empty-state"><b>No appointments yet</b><span>Find a service and request an appointment at a partner center.</span><Link to="/doctors">Browse doctors</Link></div>}
     </main>

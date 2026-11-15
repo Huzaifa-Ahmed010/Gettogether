@@ -34,6 +34,7 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
         "subscription_payments",
         "payment_webhook_events",
         "subscription_notices",
+        "facility_reviews",
     } <= set(
         inspector.get_table_names()
     )
@@ -47,8 +48,17 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
     }
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0010_booking_request_lifecycle"
+            "0011_facility_media_and_reviews"
         )
+        assert {"image_content", "image_media_type"} <= {
+            column["name"] for column in inspector.get_columns("facilities")
+        }
+        assert {"image_content", "image_media_type"} <= {
+            column["name"] for column in inspector.get_columns("services")
+        }
+        assert {"booking_id", "facility_id", "patient_user_id", "rating", "comment"} <= {
+            column["name"] for column in inspector.get_columns("facility_reviews")
+        }
         assert {
             "payment_due_paise",
             "payment_amount_paise",

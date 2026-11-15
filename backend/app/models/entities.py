@@ -16,6 +16,8 @@ class Facility(Base):
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    image_content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    image_media_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 class Service(Base):
@@ -27,6 +29,8 @@ class Service(Base):
     service_type: Mapped[str] = mapped_column(String(30))  # doctor | diagnostic
     provider_name: Mapped[str] = mapped_column(String(180), default="")
     fee_paise: Mapped[int] = mapped_column(Integer)  # integer minor units; INR rupees * 100
+    image_content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    image_media_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 class Booking(Base):
@@ -79,6 +83,29 @@ class BookingDocument(Base):
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
+
+class FacilityReview(Base):
+    __tablename__ = "facility_reviews"
+    __table_args__ = (
+        UniqueConstraint("booking_id", name="uq_facility_reviews_booking_id"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    booking_id: Mapped[int] = mapped_column(
+        ForeignKey("bookings.id", ondelete="CASCADE"), index=True
+    )
+    facility_id: Mapped[int] = mapped_column(
+        ForeignKey("facilities.id", ondelete="CASCADE"), index=True
+    )
+    patient_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    rating: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
 
 class User(Base):
     __tablename__ = "users"

@@ -170,3 +170,71 @@
 .admin-account .admin-item-heading>div{min-width:0}
 .admin-account .admin-item-heading p{overflow-wrap:anywhere}
 @media(max-width:760px){.admin-page{padding:28px 17px 45px}.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.admin-stats article{padding:13px}.admin-stats strong{font-size:20px}.admin-panel,.admin-form{padding:15px}.admin-form,.admin-account-form{grid-template-columns:1fr}.admin-form h2,.admin-form h3,.admin-form .primary-link,.admin-actions,.admin-account-form .admin-actions{grid-column:1}.admin-panel-heading,.admin-facility-row{align-items:flex-start;flex-direction:column}.admin-booking-filters{width:100%;flex-direction:column;align-items:stretch}.admin-select-label{width:100%}.admin-verify-form{align-items:stretch;flex-direction:column;width:100%}.admin-verify-form label{max-width:none}.admin-booking-actions>.danger-button{align-self:flex-start}}
+.facility-carousel-wrap{position:relative}
+.facility-carousel{display:flex;gap:15px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-behavior:smooth;scroll-snap-type:x mandatory;padding:2px 2px 14px;scrollbar-color:#b7d8d3 #ffffff24;scrollbar-width:thin}
+.facility-carousel>.facility-card{flex:0 0 calc((100% - 30px)/3);min-width:280px;scroll-snap-align:start}
+.facility-illustration{overflow:hidden;flex-shrink:0}
+.facility-illustration img{width:100%;height:100%;min-height:110px;object-fit:cover}
+.carousel-arrow{position:absolute;z-index:1;top:50%;transform:translateY(-50%);width:40px;height:40px;display:grid;place-items:center;border:1px solid #dce5e4;border-radius:50%;background:#fff;color:#07565b;box-shadow:0 3px 12px #002e3033;cursor:pointer}
+.carousel-arrow:disabled{opacity:.45;cursor:default}
+.carousel-arrow-left{left:-15px}
+.carousel-arrow-right{right:-15px}
+.carousel-load-more{flex:0 0 210px;align-self:stretch;min-height:125px;border:1px dashed #b7d8d3;border-radius:12px;background:#ffffff16;color:#fff;font:700 13px 'DM Sans';cursor:pointer;scroll-snap-align:start}
+.carousel-load-more:disabled{opacity:.65;cursor:wait}
+.facility-detail-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);align-items:stretch;gap:30px;margin:6px 0 28px}
+.facility-detail-heading{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-width:0}
+.facility-detail-heading .eyebrow{margin:0 0 8px}
+.facility-detail-heading h1{margin-bottom:12px}
+.facility-address{display:flex;align-items:flex-start;gap:7px;line-height:1.55}
+.facility-detail-actions{display:flex;flex-wrap:wrap;gap:10px}
+.facility-detail-actions .secondary-button,.facility-overview-panel>.secondary-button{display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.facility-detail-photo{height:clamp(230px,30vw,370px);overflow:hidden;border-radius:16px;background:linear-gradient(140deg,#d9ebe7,#f8d9bb)}
+.facility-detail-photo img{width:100%;height:100%;object-fit:cover}
+.facility-photo-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#07565b}
+.facility-detail-tabs{display:flex;gap:8px;overflow-x:auto;border-bottom:1px solid #dce5e4;margin:0 0 23px}
+.facility-detail-tabs button{flex-shrink:0;padding:12px 15px;border:0;border-bottom:2px solid transparent;background:transparent;color:#718483;font:600 13px 'DM Sans';cursor:pointer}
+.facility-detail-tabs button[aria-selected="true"]{color:#07565b;border-bottom-color:#07565b}
+.detail-services{max-width:920px;margin:0}
+.detail-services .section-heading{margin-bottom:12px}
+.detail-services .section-heading h2{margin:0}
+.detail-services .section-heading span{font-size:12px;color:#718483}
+.detail-services ul{margin:0 0 15px}
+.detail-services li{min-height:78px}
+.service-list-image{width:54px;height:54px;flex:0 0 54px;display:grid;place-items:center;overflow:hidden;border-radius:10px;background:#e3f1ef;color:#07565b}
+.service-list-image img{width:100%;height:100%;object-fit:cover}
+.service-list-copy{flex:1;min-width:0}
+.service-list-copy b{font-size:14px;color:#263b3e}
+.service-list-copy span{font-size:12px;color:#718483;overflow-wrap:anywhere}
+.detail-services li>strong{white-space:nowrap;font-size:13px;color:#263b3e}
+.facility-overview-panel,.facility-ratings-panel{max-width:920px;padding:22px;background:#fff;border:1px solid #e3e9e7;border-radius:12px}
+.facility-overview-panel h2,.facility-ratings-panel h2{font:750 20px Manrope,sans-serif;margin:0 0 12px}
+.facility-overview-panel>p,.facility-ratings-panel .section-heading p{font-size:13px;line-height:1.65;color:#657b7c}
+.facility-overview-panel dl{display:grid;gap:0;margin:20px 0}
+.facility-overview-panel dl>div{display:grid;grid-template-columns:150px 1fr;gap:16px;padding:12px 0;border-bottom:1px solid #e7eeec}
+.facility-overview-panel dt{font-size:12px;font-weight:700;color:#486466}
+.facility-overview-panel dd{margin:0;font-size:13px;color:#657b7c}
+.facility-overview-panel dd a{color:#07565b}
+.rating-summary{display:flex;align-items:center;gap:15px;padding:16px;background:#eef7f5;border-radius:10px}
+.rating-summary>strong{font:800 34px Manrope,sans-serif;color:#07565b}
+.rating-summary>div{display:grid;gap:5px}
+.rating-summary>div>span:last-child,.facility-review-list article>span{font-size:12px;color:#718483}
+.rating-stars{display:inline-flex;gap:3px;color:#df7028}
+.facility-review-list{display:grid;gap:10px;margin-top:16px}
+.facility-review-list article{padding:15px;border:1px solid #e3e9e7;border-radius:10px}
+.facility-review-list article p{margin:8px 0;font-size:13px;line-height:1.6;color:#486466}
+.facility-ratings-panel>.section-heading{align-items:flex-start}
+.facility-ratings-panel .section-heading p{margin:5px 0 0}
+.admin-image-upload{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:15px 0 20px;padding:15px;border:1px solid #e3e9e7;border-radius:10px;background:#fbfdfc}
+.admin-image-upload label{display:grid;gap:7px;color:#263b3e;font-size:12px;font-weight:700}
+.admin-image-upload input[type="file"],.admin-form input[type="file"]{height:auto;max-width:100%;padding:8px;background:#fff;font:400 12px 'DM Sans'}
+.admin-form fieldset{display:contents;border:0;padding:0;margin:0;min-width:0}
+.admin-form fieldset:disabled{opacity:.7}
+.facility-review-form{flex-basis:100%;display:grid;gap:10px;padding:15px;border-top:1px solid #e7eeec}
+.facility-review-form h3{margin:0;font:700 15px Manrope,sans-serif}
+.facility-review-form label{display:grid;gap:6px;max-width:360px;font-size:12px;font-weight:700;color:#263b3e}
+.facility-review-form select,.facility-review-form textarea{width:100%;border:1px solid #dce5e4;border-radius:8px;background:#fff;padding:10px;font:400 13px 'DM Sans';color:#263b3e}
+.facility-review-form textarea{min-height:90px;resize:vertical}
+.facility-review-form .secondary-button{justify-self:start}
+.review-submitted{flex-basis:100%;margin:0;padding-top:12px;border-top:1px solid #e7eeec;color:#07565b;font-size:13px}
+@media(max-width:1100px){.facility-carousel>.facility-card{flex-basis:calc((100% - 15px)/2)}.facility-detail-hero{grid-template-columns:minmax(0,1fr) minmax(240px,.8fr)}}
+@media(max-width:760px){.facility-carousel>.facility-card{flex-basis:85%;min-width:260px}.carousel-arrow{width:36px;height:36px}.carousel-arrow-left{left:-10px}.carousel-arrow-right{right:-10px}.facility-detail-hero{grid-template-columns:1fr;gap:18px}.facility-detail-photo{height:230px;grid-row:1}.facility-detail-tabs button{padding:11px 10px}.detail-services li{align-items:flex-start;gap:10px}.detail-services li>strong{font-size:12px}.facility-overview-panel,.facility-ratings-panel{padding:16px}.facility-overview-panel dl>div{grid-template-columns:110px 1fr;gap:10px}.admin-image-upload{align-items:stretch;flex-direction:column}.admin-image-upload .secondary-button{align-self:flex-start}.facility-review-form{padding:14px 0 0}}

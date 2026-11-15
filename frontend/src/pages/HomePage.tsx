@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Activity, ArrowRight, CalendarDays, ChevronRight, ClipboardPlus, FlaskConical, HeartPulse, Search, ShieldCheck, Stethoscope } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Activity, ArrowLeft, ArrowRight, CalendarDays, ChevronRight, ClipboardPlus, FlaskConical, HeartPulse, Search, ShieldCheck, Stethoscope } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getFacilities, type Facility } from "../api/client";
 import FacilityCard from "../components/FacilityCard";
@@ -27,13 +27,24 @@ export default function HomePage() {
   const [searchParams] = useSearchParams();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [error, setError] = useState("");
+  const [facilitiesHaveMore, setFacilitiesHaveMore] = useState(false);
+  const [loadingMoreFacilities, setLoadingMoreFacilities] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const facilitiesTrack = useRef<HTMLDivElement>(null);
   const city = searchParams.get("city") ?? "";
 
   useEffect(() => {
     let active = true;
-    getFacilities({ city: city || undefined, limit: 4 })
+    setFacilities([]);
+    setFacilitiesHaveMore(false);
+    setError("");
+    getFacilities({ city: city || undefined, limit: 50 })
       .then((items) => {
-        if (active) setFacilities(items);
+        if (active) {
+          setFacilities(items);
+          setFacilitiesHaveMore(items.length === 50);
+        }
       })
       .catch(() => {
         if (active) setError("Unable to load partner centers. Check that the API is running and try again.");
@@ -42,6 +53,49 @@ export default function HomePage() {
       active = false;
     };
   }, [city]);
+
+  function updateCarouselScrollState() {
+    const track = facilitiesTrack.current;
+    if (!track) return;
+    setCanScrollLeft(track.scrollLeft > 2);
+    setCanScrollRight(track.scrollLeft + track.clientWidth < track.scrollWidth - 2);
+  }
+
+  function scrollFacilities(direction: -1 | 1) {
+    const track = facilitiesTrack.current;
+    if (!track) return;
+    track.scrollBy({
+      left: direction * Math.max(280, track.clientWidth * 0.8),
+      behavior: "smooth",
+    });
+  }
+
+  async function loadMoreFacilities() {
+    setLoadingMoreFacilities(true);
+    setError("");
+    try {
+      const items = await getFacilities({
+        city: city || undefined,
+        limit: 50,
+        offset: facilities.length,
+      });
+      setFacilities((current) => [...current, ...items]);
+      setFacilitiesHaveMore(items.length === 50);
+    } catch {
+      setError("Could not load more partner centers. Please try again.");
+    } finally {
+      setLoadingMoreFacilities(false);
+    }
+  }
+
+  useEffect(() => {
+    updateCarouselScrollState();
+    const track = facilitiesTrack.current;
+    if (!track) return;
+    const observer = new ResizeObserver(updateCarouselScrollState);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [facilities.length]);
 
   function search(query: string) {
     const params = new URLSearchParams();
@@ -76,10 +130,18 @@ export default function HomePage() {
         <div className="category-grid">{diagnostics.map(({ icon: Icon, title }) => <Link className="category-card diagnostic-card" key={title} to={`/diagnostics?search=${encodeURIComponent(title)}`}><span className="category-icon"><Icon size={29} /></span><b>{title}</b><span>Explore services</span></Link>)}</div>
       </section>
       <section className="partner-section" id="hospitals">
-        <div className="section-heading"><div><p className="eyebrow">HEALTHCARE AROUND YOU</p><h2>Partner Centers {city ? `in ${city}` : "Near You"}</h2></div><span className="partner-count">{facilities.length === 4 ? "3+ centers" : `${facilities.length} centers`}</span></div>
+        <div className="section-heading"><div><p className="eyebrow">HEALTHCARE AROUND YOU</p><h2>Partner Centers {city ? `in ${city}` : "Near You"}</h2></div><span className="partner-count">{facilities.length}{facilitiesHaveMore ? "+" : ""} {facilities.length === 1 ? "center" : "centers"}</span></div>
         {error && <p className="notice" role="alert">{error}</p>}
-        <div className="facility-grid">{facilities.length ? facilities.slice(0, 3).map((facility) => <FacilityCard facility={facility} key={facility.id} />) : !error ? <div className="empty-state"><ClipboardPlus size={30} /><b>No partner centers found yet</b><span>Centers will appear here when added by an authorized administrator.</span></div> : null}</div>
-        {facilities.length > 3 && <p className="directory-more"><Link to="/hospitals">Browse all partner centers <ChevronRight size={17} /></Link></p>}
+        {facilities.length > 0 && <div className="facility-carousel-wrap">
+          <button type="button" className="carousel-arrow carousel-arrow-left" aria-label="Show previous centers" disabled={!canScrollLeft} onClick={() => scrollFacilities(-1)}><ArrowLeft size={20} /></button>
+          <div className="facility-carousel" ref={facilitiesTrack} onScroll={updateCarouselScrollState} aria-label="Partner healthcare centers">
+            {facilities.map((facility) => <FacilityCard facility={facility} key={facility.id} />)}
+            {facilitiesHaveMore && <button className="carousel-load-more" type="button" disabled={loadingMoreFacilities} onClick={loadMoreFacilities}>{loadingMoreFacilities ? "Loading…" : "Load more centers"}</button>}
+          </div>
+          <button type="button" className="carousel-arrow carousel-arrow-right" aria-label="Show more centers" disabled={!canScrollRight} onClick={() => scrollFacilities(1)}><ArrowRight size={20} /></button>
+        </div>}
+        {!facilities.length && !error && <div className="empty-state"><ClipboardPlus size={30} /><b>No partner centers found yet</b><span>Centers will appear here when added by facility staff and approved.</span></div>}
+        {facilities.length > 0 && <p className="directory-more"><Link to="/hospitals">Browse all partner centers <ChevronRight size={17} /></Link></p>}
       </section>
       <section className="assistant-banner" id="assistant"><div className="assistant-icon"><HeartPulse size={29} /></div><div><p className="eyebrow">HERE TO HELP</p><h2>Not sure where to start?</h2><p>Our care navigator can help you explore services and navigate GetTogether.</p></div><Link to="/assistant" className="assistant-action">Ask the assistant <ArrowRight size={17} /></Link></section>
       <div id="about" className="about-note"><h2>Care is better together.</h2><p>Find trusted healthcare services and providers in one place.</p></div>

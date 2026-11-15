@@ -11,6 +11,8 @@ import {
   downloadBookingDocument,
   deleteManagedFacility,
   deleteManagedService,
+  deleteFacilityImage,
+  deleteServiceImage,
   getAdminDashboard,
   getBookingDocuments,
   getManagedBookings,
@@ -20,6 +22,8 @@ import {
   recordManagedBookingPayment,
   rejectManagedBooking,
   submitFacilityOnboarding,
+  uploadFacilityImage,
+  uploadServiceImage,
   updateManagedFacility,
   updateManagedService,
   updateManagedUser,
@@ -72,6 +76,7 @@ export default function AdminPage() {
   const [paymentSavingId, setPaymentSavingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [mediaAction, setMediaAction] = useState<string | null>(null);
   const [busyDirectoryActions, setBusyDirectoryActions] = useState<Set<string>>(() => new Set());
   const [savingAccountAction, setSavingAccountAction] = useState<{
     accountId: number;
@@ -303,24 +308,101 @@ export default function AdminPage() {
       provider_name: String(form.get("provider_name") ?? ""),
       fee_paise: Math.round(Number(form.get("fee")) * 100),
     };
+    const imageFile = form.get("image");
     setDirectoryActionBusy(action, true);
     setError("");
     setNotice("");
     try {
+      let mediaError = "";
       if (existing) {
         await updateManagedService(selectedFacility.id, existing.id, payload);
+        if (imageFile instanceof File && imageFile.size > 0) {
+          try {
+            await uploadServiceImage(selectedFacility.id, existing.id, imageFile);
+          } catch (reason) {
+            mediaError = `Service details were saved, but the photo could not be uploaded: ${errorText(reason)}`;
+          }
+        }
         setNotice("Service details saved.");
       } else {
-        await createFacilityService(selectedFacility.id, payload);
-        setNotice("Service added.");
+        const created = await createFacilityService(selectedFacility.id, payload);
         formElement.reset();
+        if (imageFile instanceof File && imageFile.size > 0) {
+          try {
+            await uploadServiceImage(selectedFacility.id, created.id, imageFile);
+          } catch (reason) {
+            mediaError = `Service was added, but the photo could not be uploaded: ${errorText(reason)}`;
+          }
+        }
+        setNotice("Service added.");
       }
       setServices(await getManagedServices(selectedFacility.id));
       await loadDashboard();
+      if (mediaError) setError(mediaError);
     } catch (reason) {
       setError(errorText(reason));
     } finally {
       setDirectoryActionBusy(action, false);
+    }
+  }
+
+  async function changeFacilityImage(file: File | undefined) {
+    if (!selectedFacility || !file) return;
+    setMediaAction(`facility:${selectedFacility.id}`);
+    setError("");
+    setNotice("");
+    try {
+      await uploadFacilityImage(selectedFacility.id, file);
+      setNotice("Facility photo uploaded.");
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setMediaAction(null);
+    }
+  }
+
+  async function removeFacilityImage() {
+    if (!selectedFacility) return;
+    setMediaAction(`facility:${selectedFacility.id}`);
+    setError("");
+    setNotice("");
+    try {
+      const result = await deleteFacilityImage(selectedFacility.id);
+      setNotice(result.message);
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setMediaAction(null);
+    }
+  }
+
+  async function changeServiceImage(serviceId: number, file: File | undefined) {
+    if (!selectedFacility || !file) return;
+    setMediaAction(`service:${serviceId}`);
+    setError("");
+    setNotice("");
+    try {
+      await uploadServiceImage(selectedFacility.id, serviceId, file);
+      setNotice("Doctor/service photo uploaded.");
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setMediaAction(null);
+    }
+  }
+
+  async function removeServiceImage(serviceId: number) {
+    if (!selectedFacility) return;
+    setMediaAction(`service:${serviceId}`);
+    setError("");
+    setNotice("");
+    try {
+      const result = await deleteServiceImage(selectedFacility.id, serviceId);
+      setNotice(result.message);
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setMediaAction(null);
     }
   }
 
@@ -657,6 +739,12 @@ export default function AdminPage() {
                 <button className="primary-link" disabled={isFacilityBusy(selectedFacility.id)}>{isDirectoryActionBusy(`facility:${selectedFacility.id}:save`) ? "Saving…" : "Save facility"}</button>
               </fieldset>
             </form>
+            <div className="admin-image-upload">
+              <label>Facility photo (JPEG, PNG, or WebP; maximum 5 MB)
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={mediaAction === `facility:${selectedFacility.id}`} onChange={(event) => void changeFacilityImage(event.currentTarget.files?.[0])} />
+              </label>
+              <button type="button" className="secondary-button" disabled={mediaAction === `facility:${selectedFacility.id}`} onClick={() => void removeFacilityImage()}>Remove facility photo</button>
+            </div>
             <div className="admin-list-heading"><h3>Doctors & services</h3><span>{services.length} total</span></div>
             {services.length === 0 && <p className="admin-empty">No services have been added to this facility yet.</p>}
             <div className="admin-item-list">
@@ -665,10 +753,14 @@ export default function AdminPage() {
                   <div className="admin-item-heading"><div><h4>{service.name}</h4><span className={service.is_active ? "admin-status active" : "admin-status"}>{service.is_active ? "Active" : "Inactive"}</span></div></div>
                   <fieldset disabled={!selectedFacility.is_active}>
                     <ServiceFields service={service} />
+                  <label>Doctor/service photo (JPEG, PNG, or WebP; maximum 5 MB)
+                    <input type="file" accept="image/jpeg,image/png,image/webp" disabled={mediaAction === `service:${service.id}`} onChange={(event) => void changeServiceImage(service.id, event.currentTarget.files?.[0])} />
+                  </label>
                   <div className="admin-actions">
                     <button className="primary-link" disabled={isServiceBusy(service.id)}>{isDirectoryActionBusy(`service:${service.id}:save`) ? "Saving…" : "Save service"}</button>
                     <button type="button" className="secondary-button" disabled={isServiceBusy(service.id)} onClick={() => toggleService(service)}>{isDirectoryActionBusy(`service:${service.id}:status`) ? "Updating…" : service.is_active ? "Deactivate" : "Activate"}</button>
                     <button type="button" className="danger-button" disabled={isServiceBusy(service.id)} onClick={() => deleteService(service)}>{isDirectoryActionBusy(`service:${service.id}:delete`) ? "Deleting…" : "Delete service"}</button>
+                    <button type="button" className="secondary-button" disabled={mediaAction === `service:${service.id}`} onClick={() => void removeServiceImage(service.id)}>Remove photo</button>
                   </div>
                   </fieldset>
                 </form>
@@ -677,6 +769,7 @@ export default function AdminPage() {
             {selectedFacility?.is_active && <form className="admin-form admin-add-service" onSubmit={(event) => submitService(event)}>
               <h3>Add a service</h3>
               <ServiceFields />
+              <label>Doctor/service photo (optional; JPEG, PNG, or WebP; maximum 5 MB)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" /></label>
               <button className="primary-link" disabled={busyDirectoryActions.has(`service:create:${selectedFacility.id}`)}>{busyDirectoryActions.has(`service:create:${selectedFacility.id}`) ? "Saving…" : "Add service"}</button>
             </form>}
           </>}
