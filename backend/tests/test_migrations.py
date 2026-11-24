@@ -48,7 +48,7 @@ def test_migrations_create_current_schema(tmp_path, monkeypatch):
     }
     with engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0011_facility_media_and_reviews"
+            "0012_doctor_slots_and_facility_coordinates"
         )
         assert {"image_content", "image_media_type"} <= {
             column["name"] for column in inspector.get_columns("facilities")
