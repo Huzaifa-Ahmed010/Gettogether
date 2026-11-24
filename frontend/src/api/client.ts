@@ -74,6 +74,8 @@ export type Facility = {
   phone: string;
   description: string;
   timezone: string;
+  latitude: number | null;
+  longitude: number | null;
   is_active: boolean;
 };
 
@@ -101,6 +103,7 @@ export type Service = {
   category: string;
   service_type: "doctor" | "diagnostic";
   provider_name: string;
+  provider_key: string | null;
   fee_paise: number;
   is_active: boolean;
   facility_name: string;
@@ -402,6 +405,9 @@ export function cancelBooking(bookingId: number) {
 
 export function getFacilities(filters?: {
   city?: string;
+  latitude?: number;
+  longitude?: number;
+  radius_km?: number;
   facility_type?: "hospital" | "diagnostic";
   search?: string;
   limit?: number;
@@ -410,6 +416,11 @@ export function getFacilities(filters?: {
   const params = new URLSearchParams();
 
   if (filters?.city) params.set("city", filters.city);
+  if (filters?.latitude !== undefined && filters?.longitude !== undefined) {
+    params.set("latitude", String(filters.latitude));
+    params.set("longitude", String(filters.longitude));
+    params.set("radius_km", String(filters.radius_km ?? 25));
+  }
   if (filters?.facility_type) {
     params.set("facility_type", filters.facility_type);
   }
@@ -425,6 +436,9 @@ export function getFacilities(filters?: {
 
 export function searchServices(filters: {
   city?: string;
+  latitude?: number;
+  longitude?: number;
+  radius_km?: number;
   search?: string;
   service_type?: Service["service_type"];
   limit?: number;
@@ -433,6 +447,11 @@ export function searchServices(filters: {
   const params = new URLSearchParams();
   if (filters.service_type) params.set("service_type", filters.service_type);
   if (filters.city) params.set("city", filters.city);
+  if (filters.latitude !== undefined && filters.longitude !== undefined) {
+    params.set("latitude", String(filters.latitude));
+    params.set("longitude", String(filters.longitude));
+    params.set("radius_km", String(filters.radius_km ?? 25));
+  }
   if (filters.search) params.set("search", filters.search);
   params.set("limit", String(filters.limit ?? DIRECTORY_PAGE_SIZE));
   params.set("offset", String(filters.offset ?? 0));
