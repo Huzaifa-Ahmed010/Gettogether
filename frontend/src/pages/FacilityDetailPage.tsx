@@ -139,10 +139,8 @@ export default function FacilityDetailPage() {
   const minimumAppointment = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
     .toISOString()
     .slice(0, 16);
-  const directionsUrl = facility
-    ? facility.latitude !== null && facility.longitude !== null
-      ? `https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${facility.name}, ${facility.address}, ${facility.city}`)}`
+  const directionsUrl = facility && facility.latitude !== null && facility.longitude !== null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}`
     : "";
 
   return <SiteLayout>
@@ -156,7 +154,7 @@ export default function FacilityDetailPage() {
             <p className="facility-address"><MapPin size={17} />{facility.address}, {facility.city}</p>
             <div className="facility-detail-actions">
               {facility.phone && <a className="primary-link" href={`tel:${facility.phone}`}>Call {facility.phone}</a>}
-              <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a>
+              {directionsUrl ? {directionsUrl ? <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a> : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>} : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>}
             </div>
           </div>
           <div className="facility-detail-photo">
