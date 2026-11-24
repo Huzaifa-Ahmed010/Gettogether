@@ -13,6 +13,8 @@ class FacilityUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=2000)
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     is_active: bool | None = None
 
     @field_validator("timezone")
