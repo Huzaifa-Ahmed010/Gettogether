@@ -154,7 +154,7 @@ export default function FacilityDetailPage() {
             <p className="facility-address"><MapPin size={17} />{facility.address}, {facility.city}</p>
             <div className="facility-detail-actions">
               {facility.phone && <a className="primary-link" href={`tel:${facility.phone}`}>Call {facility.phone}</a>}
-              {directionsUrl ? {directionsUrl ? <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a> : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>} : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>}
+              {directionsUrl ? <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a> : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>}
             </div>
           </div>
           <div className="facility-detail-photo">
@@ -219,7 +219,7 @@ export default function FacilityDetailPage() {
             <div><dt>Local time zone</dt><dd>{facility.timezone}</dd></div>
             <div><dt>Facility type</dt><dd>{facility.facility_type === "hospital" ? "Hospital" : "Diagnostic center"}</dd></div>
           </dl>
-          <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a>
+          {directionsUrl ? <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a> : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>}
         </section>}
 
         {detailTab === "ratings" && <section className="facility-ratings-panel">
