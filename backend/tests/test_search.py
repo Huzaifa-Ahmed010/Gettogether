@@ -48,6 +48,7 @@ def test_service_and_facility_search(
                     "category": "Cardiology",
                     "service_type": "doctor",
                     "provider_name": provider_name,
+                    "provider_key": f"test-{provider_name.lower().replace(' ', '-')}",
                     "fee_paise": 250000,
                 },
                 headers=staff_headers,
