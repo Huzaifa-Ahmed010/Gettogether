@@ -95,7 +95,7 @@ def create_booking(
 
     require_facility_entitlement(db, facility.id, operational_write=True)
     provider_key = (
-        service.provider_key or f"service-{service.id}"
+        service.provider_key
         if service.service_type == "doctor" and service.provider_name.strip()
         else None
     )
