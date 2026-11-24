@@ -326,6 +326,8 @@ def update_service(
         raise HTTPException(404, "Service not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(service, field, value)
+    if service.service_type == "doctor" and not service.provider_key:
+        raise HTTPException(422, "A shared provider key is required for doctor services")
     db.flush()
     record_audit_event(db, user, "service.updated", "service", service.id)
     db.commit()
