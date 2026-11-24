@@ -36,6 +36,7 @@ def upgrade() -> None:
         "bookings", sa.MetaData(),
         sa.Column("id", sa.Integer), sa.Column("service_id", sa.Integer),
         sa.Column("appointment_at", sa.DateTime(timezone=True)),
+        sa.Column("status", sa.String(20)),
         sa.Column("provider_key", sa.String(180)),
     )
     services_lookup = sa.Table(
@@ -46,6 +47,7 @@ def upgrade() -> None:
         sa.select(bookings.c.id, bookings.c.appointment_at, services_lookup.c.provider_key)
         .select_from(bookings.join(services_lookup, bookings.c.service_id == services_lookup.c.id))
         .where(services_lookup.c.provider_key.is_not(None))
+        .where(bookings.c.status.in_(("requested", "confirmed", "checked_in")))
         .order_by(bookings.c.id)
     ).all()
     reserved = set()
