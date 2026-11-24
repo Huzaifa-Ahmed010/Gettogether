@@ -61,6 +61,7 @@ def test_service_and_facility_search(
                     "category": "Cardiology",
                     "service_type": "doctor",
                     "provider_name": f"Dr Another Provider {suffix}",
+                    "provider_key": f"test-another-provider-{suffix}",
                     "fee_paise": 150000,
                 },
                 headers=staff_headers,
