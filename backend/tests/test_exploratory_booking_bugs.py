@@ -3,11 +3,24 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.api.routes.auth import create_access_token
 from app.db.session import SessionLocal
 from app.main import app
 from app.models import AuditEvent, Booking, Facility, Service, User
 
-from test_bookings import add_user
+
+def add_user(db, role, *, facility_id=None):
+    user = User(
+        name=f"Test {role}",
+        email=f"{role}-{uuid4().hex}@example.com",
+        password_hash="test-only-password-hash",
+        role=role,
+        email_verified=True,
+        facility_id=facility_id,
+    )
+    db.add(user)
+    db.flush()
+    return user, {"Authorization": f"Bearer {create_access_token(user)}"}
 
 
 def test_doctor_slot_is_shared_across_service_categories_and_released_on_cancel(
