@@ -241,6 +241,15 @@ def test_migrations_adopt_legacy_schema_without_dropping_users(tmp_path, monkeyp
         "payment_collected_at",
         "payment_reference",
     } <= {column["name"] for column in inspector.get_columns("bookings")}
+    assert {"latitude", "longitude"} <= {
+        column["name"] for column in inspector.get_columns("facilities")
+    }
+    assert "provider_key" in {
+        column["name"] for column in inspector.get_columns("services")
+    }
+    assert "provider_key" in {
+        column["name"] for column in inspector.get_columns("bookings")
+    }
     assert "booking_documents" in inspector.get_table_names()
     with engine.connect() as migrated:
         user = migrated.execute(
