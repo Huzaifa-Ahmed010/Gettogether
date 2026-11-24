@@ -324,13 +324,53 @@ def update_service(
     ).first()
     if service is None:
         raise HTTPException(404, "Service not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(service, field, value)
     if service.service_type == "doctor" and not service.provider_key:
         raise HTTPException(422, "A shared provider key is required for doctor services")
-    db.flush()
-    record_audit_event(db, user, "service.updated", "service", service.id)
-    db.commit()
+
+    # Keep already-held appointments aligned when staff link multiple service
+    # records to the same canonical doctor identity.
+    if "provider_key" in changes or "service_type" in changes:
+        new_provider_key = service.provider_key if service.service_type == "doctor" else None
+        active_bookings = (
+            db.query(Booking)
+            .filter(
+                Booking.service_id == service.id,
+                Booking.status.in_(("requested", "confirmed", "checked_in")),
+            )
+            .with_for_update()
+            .all()
+        )
+        seen_times = set()
+        for booking in active_bookings:
+            if new_provider_key is not None:
+                if booking.appointment_at in seen_times:
+                    raise HTTPException(
+                        409,
+                        "This service has multiple active requests at the same time. Resolve those bookings before linking the doctor identity.",
+                    )
+                seen_times.add(booking.appointment_at)
+                conflict = db.query(Booking.id).filter(
+                    Booking.provider_key == new_provider_key,
+                    Booking.appointment_at == booking.appointment_at,
+                    Booking.id != booking.id,
+                ).first()
+                if conflict:
+                    raise HTTPException(
+                        409,
+                        "This doctor already has an active appointment at one of this service's reserved times.",
+                    )
+            booking.provider_key = new_provider_key
+
+    try:
+        db.flush()
+        record_audit_event(db, user, "service.updated", "service", service.id)
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, "The provider identity conflicts with an existing appointment slot") from error
     db.refresh(service)
     return service
 
