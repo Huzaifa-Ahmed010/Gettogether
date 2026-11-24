@@ -238,3 +238,11 @@
 .review-submitted{flex-basis:100%;margin:0;padding-top:12px;border-top:1px solid #e7eeec;color:#07565b;font-size:13px}
 @media(max-width:1100px){.facility-carousel>.facility-card{flex-basis:calc((100% - 15px)/2)}.facility-detail-hero{grid-template-columns:minmax(0,1fr) minmax(240px,.8fr)}}
 @media(max-width:760px){.facility-carousel>.facility-card{flex-basis:85%;min-width:260px}.carousel-arrow{width:36px;height:36px}.carousel-arrow-left{left:-10px}.carousel-arrow-right{right:-10px}.facility-detail-hero{grid-template-columns:1fr;gap:18px}.facility-detail-photo{height:230px;grid-row:1}.facility-detail-tabs button{padding:11px 10px}.detail-services li{align-items:flex-start;gap:10px}.detail-services li>strong{font-size:12px}.facility-overview-panel,.facility-ratings-panel{padding:16px}.facility-overview-panel dl>div{grid-template-columns:110px 1fr;gap:10px}.admin-image-upload{align-items:stretch;flex-direction:column}.admin-image-upload .secondary-button{align-self:flex-start}.facility-review-form{padding:14px 0 0}}
+
+
+/* Mobile booking form overflow guard (GT-BUG-001). */
+.booking-panel,.booking-panel .account-form,.booking-panel .account-form label{min-width:0;max-width:100%;}
+.booking-panel .account-form input,.booking-panel .account-form select,.booking-panel .account-form button{width:100%;max-width:100%;min-width:0;box-sizing:border-box;}
+.booking-panel .account-form input[type="file"]{height:auto;min-height:44px;padding:10px 8px;overflow:hidden;font-size:13px;}
+.booking-panel .account-form input[type="datetime-local"]{display:block;}
+@media(max-width:760px){.booking-panel{padding:16px;margin-left:0;margin-right:0;}.booking-panel .account-form{padding:15px;}.booking-panel .account-form input[type="file"]{font-size:12px;}}

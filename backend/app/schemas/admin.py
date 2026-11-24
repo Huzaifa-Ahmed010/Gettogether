@@ -13,6 +13,8 @@ class FacilityUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=2000)
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     is_active: bool | None = None
 
     @field_validator("timezone")
@@ -27,6 +29,8 @@ class FacilityUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_patch(self):
+        if ("latitude" in self.model_fields_set) != ("longitude" in self.model_fields_set):
+            raise ValueError("latitude and longitude must be updated together")
         if not self.model_fields_set:
             raise ValueError("At least one field must be provided")
         if any(getattr(self, field) is None for field in self.model_fields_set):
@@ -39,6 +43,7 @@ class ServiceUpdate(BaseModel):
     category: str | None = Field(default=None, min_length=2, max_length=100)
     service_type: Literal["doctor", "diagnostic"] | None = None
     provider_name: str | None = Field(default=None, max_length=180)
+    provider_key: str | None = Field(default=None, min_length=2, max_length=80, pattern="^[A-Za-z0-9._-]+$")
     fee_paise: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
 

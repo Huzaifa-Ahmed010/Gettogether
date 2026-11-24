@@ -14,11 +14,13 @@ function useDirectoryParams() {
   return {
     search: params.get("search")?.trim() ?? "",
     city: params.get("city")?.trim() ?? "",
+    latitude: params.has("latitude") ? Number(params.get("latitude")) : undefined,
+    longitude: params.has("longitude") ? Number(params.get("longitude")) : undefined,
   };
 }
 
 export function SearchPage() {
-  const { search, city } = useDirectoryParams();
+  const { search, city, latitude, longitude } = useDirectoryParams();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,8 +35,8 @@ export function SearchPage() {
     setLoading(true);
     setError("");
     Promise.all([
-      getFacilities({ search: search || undefined, city: city || undefined }),
-      searchServices({ search: search || undefined, city: city || undefined }),
+      getFacilities({ search: search || undefined, city: city || undefined, latitude, longitude }),
+      searchServices({ search: search || undefined, city: city || undefined, latitude, longitude }),
     ])
       .then(([facilityResults, serviceResults]) => {
         if (active) {
@@ -47,7 +49,7 @@ export function SearchPage() {
       .catch(() => { if (active) setError("Could not load search results. Check your connection and try again."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [city, search]);
+  }, [city, search, latitude, longitude]);
 
   async function loadMoreFacilities() {
     setLoadingMoreFacilities(true);
@@ -56,6 +58,8 @@ export function SearchPage() {
       const results = await getFacilities({
         search: search || undefined,
         city: city || undefined,
+        latitude,
+        longitude,
         offset: facilities.length,
       });
       setFacilities((current) => [...current, ...results]);
@@ -74,6 +78,8 @@ export function SearchPage() {
       const results = await searchServices({
         search: search || undefined,
         city: city || undefined,
+        latitude,
+        longitude,
         offset: services.length,
       });
       setServices((current) => [...current, ...results]);
@@ -115,7 +121,7 @@ function ServiceCard({ service }: { service: Service }) {
 }
 
 export function FacilityDirectoryPage({ facilityType }: FacilityDirectoryProps) {
-  const { search, city } = useDirectoryParams();
+  const { search, city, latitude, longitude } = useDirectoryParams();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -127,7 +133,7 @@ export function FacilityDirectoryPage({ facilityType }: FacilityDirectoryProps) 
     let active = true;
     setLoading(true);
     setError("");
-    getFacilities({ search: search || undefined, city: city || undefined, facility_type: facilityType })
+    getFacilities({ search: search || undefined, city: city || undefined, latitude, longitude, facility_type: facilityType })
       .then((result) => {
         if (active) {
           setFacilities(result);
@@ -137,7 +143,7 @@ export function FacilityDirectoryPage({ facilityType }: FacilityDirectoryProps) 
       .catch(() => { if (active) setError("Could not load healthcare centers. Check your connection and try again."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [city, facilityType, search]);
+  }, [city, facilityType, search, latitude, longitude]);
 
   async function loadMore() {
     setLoadingMore(true);
@@ -146,6 +152,8 @@ export function FacilityDirectoryPage({ facilityType }: FacilityDirectoryProps) 
       const results = await getFacilities({
         search: search || undefined,
         city: city || undefined,
+        latitude,
+        longitude,
         facility_type: facilityType,
         offset: facilities.length,
       });
@@ -171,7 +179,7 @@ export function FacilityDirectoryPage({ facilityType }: FacilityDirectoryProps) 
 }
 
 export function ServiceDirectoryPage({ serviceType }: { serviceType: Service["service_type"] }) {
-  const { search, city } = useDirectoryParams();
+  const { search, city, latitude, longitude } = useDirectoryParams();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -183,7 +191,7 @@ export function ServiceDirectoryPage({ serviceType }: { serviceType: Service["se
     let active = true;
     setLoading(true);
     setError("");
-    searchServices({ search: search || undefined, city: city || undefined, service_type: serviceType })
+    searchServices({ search: search || undefined, city: city || undefined, latitude, longitude, service_type: serviceType })
       .then((result) => {
         if (active) {
           setServices(result);
@@ -193,7 +201,7 @@ export function ServiceDirectoryPage({ serviceType }: { serviceType: Service["se
       .catch(() => { if (active) setError("Could not load services. Check your connection and try again."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [city, search, serviceType]);
+  }, [city, search, serviceType, latitude, longitude]);
 
   async function loadMore() {
     setLoadingMore(true);
@@ -202,6 +210,8 @@ export function ServiceDirectoryPage({ serviceType }: { serviceType: Service["se
       const results = await searchServices({
         search: search || undefined,
         city: city || undefined,
+        latitude,
+        longitude,
         service_type: serviceType,
         offset: services.length,
       });

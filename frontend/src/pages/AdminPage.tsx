@@ -241,6 +241,12 @@ export default function AdminPage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const latitudeText = String(form.get("latitude") ?? "").trim();
+    const longitudeText = String(form.get("longitude") ?? "").trim();
+    if (Boolean(latitudeText) !== Boolean(longitudeText)) {
+      setError("Enter both map latitude and longitude, or leave both blank.");
+      return;
+    }
     setDirectoryActionBusy("facility:onboarding", true);
     setError("");
     setNotice("");
@@ -253,6 +259,8 @@ export default function AdminPage() {
         phone: String(form.get("phone") ?? ""),
         description: String(form.get("description") ?? ""),
         timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
+        latitude: latitudeText ? Number(latitudeText) : null,
+        longitude: longitudeText ? Number(longitudeText) : null,
       });
       setNotice("Facility submitted. It will remain unavailable to patients until a platform administrator approves it.");
       await loadDirectory();
@@ -269,6 +277,12 @@ export default function AdminPage() {
     event.preventDefault();
     if (!selectedFacility) return;
     const form = new FormData(event.currentTarget);
+    const latitudeText = String(form.get("latitude") ?? "").trim();
+    const longitudeText = String(form.get("longitude") ?? "").trim();
+    if (Boolean(latitudeText) !== Boolean(longitudeText)) {
+      setError("Enter both map latitude and longitude, or leave both blank.");
+      return;
+    }
     const payload: Partial<Omit<Facility, "id">> = {
       name: String(form.get("name")),
       facility_type: String(form.get("facility_type")) as Facility["facility_type"],
@@ -277,6 +291,9 @@ export default function AdminPage() {
       phone: String(form.get("phone") ?? ""),
       description: String(form.get("description") ?? ""),
       timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
+      ...(latitudeText && longitudeText
+        ? { latitude: Number(latitudeText), longitude: Number(longitudeText) }
+        : {}),
     };
     const action = `facility:${selectedFacility.id}:save`;
     setDirectoryActionBusy(action, true);
@@ -301,14 +318,20 @@ export default function AdminPage() {
     const action = existing
       ? `service:${existing.id}:save`
       : `service:create:${selectedFacility.id}`;
+    const providerKey = String(form.get("provider_key") ?? "").trim();
     const payload = {
       name: String(form.get("name")),
       category: String(form.get("category")),
       service_type: String(form.get("service_type")) as ManagedService["service_type"],
       provider_name: String(form.get("provider_name") ?? ""),
+      ...(providerKey ? { provider_key: providerKey } : {}),
       fee_paise: Math.round(Number(form.get("fee")) * 100),
     };
     const imageFile = form.get("image");
+    if (payload.service_type === "doctor" && !providerKey) {
+      setError("Enter a shared doctor ID. Reuse the same ID for every service/category belonging to this doctor.");
+      return;
+    }
     setDirectoryActionBusy(action, true);
     setError("");
     setNotice("");
@@ -862,6 +885,8 @@ function FacilityFields({ facility }: { facility?: Facility }) {
     <label>Phone<input name="phone" maxLength={30} defaultValue={facility?.phone ?? ""} /></label>
     <label>Public description<textarea name="description" maxLength={2000} defaultValue={facility?.description ?? ""} /></label>
     <label>Timezone (IANA)<input name="timezone" maxLength={64} defaultValue={facility?.timezone ?? "Asia/Kolkata"} required /></label>
+    <label>Map latitude<input name="latitude" type="number" min="-90" max="90" step="any" defaultValue={facility?.latitude ?? ""} placeholder="e.g. 28.12345" /></label>
+    <label>Map longitude<input name="longitude" type="number" min="-180" max="180" step="any" defaultValue={facility?.longitude ?? ""} placeholder="e.g. 78.12345" /></label>
   </>;
 }
 
@@ -871,6 +896,7 @@ function ServiceFields({ service }: { service?: ManagedService }) {
     <label>Category<input name="category" minLength={2} maxLength={100} defaultValue={service?.category ?? ""} required /></label>
     <label>Type<select name="service_type" defaultValue={service?.service_type ?? "doctor"}><option value="doctor">Doctor</option><option value="diagnostic">Diagnostic</option></select></label>
     <label>Provider name<input name="provider_name" maxLength={180} defaultValue={service?.provider_name ?? ""} /></label>
+    <label>Shared doctor ID<input name="provider_key" minLength={2} maxLength={80} pattern="[A-Za-z0-9._-]+" defaultValue={service?.provider_key ?? ""} placeholder="Reuse for this doctor across all categories" /></label>
     <label>Fee (₹)<input name="fee" type="number" min="0" step="0.01" defaultValue={service ? (service.fee_paise / 100).toFixed(2) : "0.00"} required /></label>
   </>;
 }

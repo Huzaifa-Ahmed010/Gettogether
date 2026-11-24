@@ -71,6 +71,7 @@ def test_facility_media_and_completed_appointment_reviews(
                     "category": "Primary care",
                     "service_type": "doctor",
                     "provider_name": "Dr Media",
+                    "provider_key": "test-dr-media",
                     "fee_paise": 0,
                 },
                 headers=staff_headers,

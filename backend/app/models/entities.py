@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
@@ -13,6 +13,8 @@ class Facility(Base):
     phone: Mapped[str] = mapped_column(String(30), default="")
     description: Mapped[str] = mapped_column(Text, default="")
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata")
+    latitude: Mapped[float | None] = mapped_column(nullable=True)
+    longitude: Mapped[float | None] = mapped_column(nullable=True)
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -28,6 +30,7 @@ class Service(Base):
     category: Mapped[str] = mapped_column(String(100), index=True)
     service_type: Mapped[str] = mapped_column(String(30))  # doctor | diagnostic
     provider_name: Mapped[str] = mapped_column(String(180), default="")
+    provider_key: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     fee_paise: Mapped[int] = mapped_column(Integer)  # integer minor units; INR rupees * 100
     image_content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     image_media_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -35,7 +38,10 @@ class Service(Base):
 
 class Booking(Base):
     __tablename__ = "bookings"
-    __table_args__ = (UniqueConstraint("verification_code", name="uq_booking_verification_code"),)
+    __table_args__ = (
+        UniqueConstraint("verification_code", name="uq_booking_verification_code"),
+        UniqueConstraint("provider_key", "appointment_at", name="uq_booking_provider_slot"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     patient_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
@@ -45,6 +51,9 @@ class Booking(Base):
     facility_id: Mapped[int] = mapped_column(ForeignKey("facilities.id"), index=True)
     service_id: Mapped[int] = mapped_column(ForeignKey("services.id"), index=True)
     appointment_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # Normalized provider identity shared by all service records for the same doctor.
+    # NULL for diagnostics and for legacy bookings created before this migration.
+    provider_key: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
     payment_method: Mapped[str] = mapped_column(String(20))  # physical | online
     payment_status: Mapped[str] = mapped_column(String(20), default="unpaid")
     payment_due_paise: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

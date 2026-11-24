@@ -139,8 +139,8 @@ export default function FacilityDetailPage() {
   const minimumAppointment = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
     .toISOString()
     .slice(0, 16);
-  const directionsUrl = facility
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${facility.address}, ${facility.city}`)}`
+  const directionsUrl = facility && facility.latitude !== null && facility.longitude !== null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}`
     : "";
 
   return <SiteLayout>
@@ -154,7 +154,7 @@ export default function FacilityDetailPage() {
             <p className="facility-address"><MapPin size={17} />{facility.address}, {facility.city}</p>
             <div className="facility-detail-actions">
               {facility.phone && <a className="primary-link" href={`tel:${facility.phone}`}>Call {facility.phone}</a>}
-              <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a>
+              {directionsUrl ? <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a> : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>}
             </div>
           </div>
           <div className="facility-detail-photo">
@@ -184,7 +184,7 @@ export default function FacilityDetailPage() {
           </section>
           <section className="booking-panel" id="book-appointment">
             <h2>Book an appointment</h2>
-            {!user ? <p><Link to="/login">Sign in or create an account</Link> to book at this center.</p> : booking ? <div className="booking-confirmation" role="status">
+            {!user ? <p><Link to="/login">Sign in or create an account</Link> to book at this center.</p> : user.role !== "patient" ? <p>Appointment requests are available to patient accounts only. Use your management workspace to manage this facility or the platform.</p> : booking ? <div className="booking-confirmation" role="status">
               <h3>Appointment request submitted</h3>
               <p>Your request reference is <strong>#{booking.id}</strong>. The facility will review the request; a check-in code becomes available in My bookings only after it is confirmed.</p>
               <p>Payment is due at the facility. Track the request in <Link to="/bookings">My bookings</Link>.</p>
@@ -219,7 +219,7 @@ export default function FacilityDetailPage() {
             <div><dt>Local time zone</dt><dd>{facility.timezone}</dd></div>
             <div><dt>Facility type</dt><dd>{facility.facility_type === "hospital" ? "Hospital" : "Diagnostic center"}</dd></div>
           </dl>
-          <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a>
+          {directionsUrl ? <a className="secondary-button" href={directionsUrl} target="_blank" rel="noopener noreferrer"><MapPin size={16} /> Get directions</a> : <span className="secondary-button directions-unavailable" title="Facility staff must verify and save map coordinates">Directions not verified</span>}
         </section>}
 
         {detailTab === "ratings" && <section className="facility-ratings-panel">

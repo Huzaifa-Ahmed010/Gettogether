@@ -90,6 +90,7 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                 "category": "Primary care",
                 "service_type": "doctor",
                 "provider_name": "Dr Demo",
+                    "provider_key": "test-dr-demo",
                 "fee_paise": 25000,
             }
             assert client.post(
@@ -122,6 +123,7 @@ def test_directory_management_is_role_and_facility_scoped(platform_admin_headers
                     "category": "Unused",
                     "service_type": "doctor",
                     "provider_name": "Dr Demo",
+                    "provider_key": "test-dr-demo",
                     "fee_paise": 0,
                 },
                 headers=staff_headers,
@@ -342,6 +344,7 @@ def test_booking_and_user_admin_permissions(platform_admin_headers, grant_facili
                     "category": "Primary care",
                     "service_type": "doctor",
                     "provider_name": "Dr Example",
+                    "provider_key": "test-dr-example",
                     "fee_paise": 10000,
                 },
                 headers=staff_headers,

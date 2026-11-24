@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -74,8 +75,13 @@ def list_facilities(
     search: str | None = Query(default=None, min_length=1, max_length=180),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    radius_km: float = Query(default=25, gt=0, le=200),
     db: Session = Depends(get_db),
 ):
+    if (latitude is None) != (longitude is None):
+        raise HTTPException(422, "latitude and longitude must be supplied together")
     now = datetime.now(timezone.utc)
     query = db.query(Facility).filter(
         Facility.is_active.is_(True),
@@ -83,6 +89,14 @@ def list_facilities(
     )
     if city:
         query = query.filter(Facility.city.ilike(f"%{city}%"))
+    if latitude is not None and longitude is not None:
+        lat_delta = radius_km / 110.574
+        lon_delta = radius_km / max(1.0, 111.320 * abs(math.cos(math.radians(latitude))))
+        query = query.filter(
+            Facility.latitude.is_not(None), Facility.longitude.is_not(None),
+            Facility.latitude.between(latitude - lat_delta, latitude + lat_delta),
+            Facility.longitude.between(longitude - lon_delta, longitude + lon_delta),
+        )
     if facility_type:
         if facility_type not in {"hospital", "diagnostic"}:
             raise HTTPException(422, "facility_type must be hospital or diagnostic")
@@ -106,7 +120,16 @@ def list_facilities(
                 matching_services,
             )
         )
-    return query.order_by(Facility.name, Facility.id).offset(offset).limit(limit).all()
+    if latitude is not None and longitude is not None:
+        distance_sq = (
+            (Facility.latitude - latitude) * (Facility.latitude - latitude)
+            + (Facility.longitude - longitude) * (Facility.longitude - longitude)
+            * math.cos(math.radians(latitude)) ** 2
+        )
+        query = query.order_by(distance_sq, Facility.name, Facility.id)
+    else:
+        query = query.order_by(Facility.name, Facility.id)
+    return query.offset(offset).limit(limit).all()
 
 @services_router.get("", response_model=list[ServiceSearchRead])
 def search_services(
@@ -115,8 +138,13 @@ def search_services(
     service_type: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    radius_km: float = Query(default=25, gt=0, le=200),
     db: Session = Depends(get_db),
 ):
+    if (latitude is None) != (longitude is None):
+        raise HTTPException(422, "latitude and longitude must be supplied together")
     if service_type and service_type not in {"doctor", "diagnostic"}:
         raise HTTPException(422, "service_type must be doctor or diagnostic")
 
@@ -130,6 +158,14 @@ def search_services(
         query = query.filter(Service.service_type == service_type)
     if city:
         query = query.filter(Facility.city.ilike(f"%{city}%"))
+    if latitude is not None and longitude is not None:
+        lat_delta = radius_km / 110.574
+        lon_delta = radius_km / max(1.0, 111.320 * abs(math.cos(math.radians(latitude))))
+        query = query.filter(
+            Facility.latitude.is_not(None), Facility.longitude.is_not(None),
+            Facility.latitude.between(latitude - lat_delta, latitude + lat_delta),
+            Facility.longitude.between(longitude - lon_delta, longitude + lon_delta),
+        )
     if search:
         term = f"%{search}%"
         query = query.filter(
@@ -143,6 +179,16 @@ def search_services(
             )
         )
 
+    if latitude is not None and longitude is not None:
+        distance_sq = (
+            (Facility.latitude - latitude) * (Facility.latitude - latitude)
+            + (Facility.longitude - longitude) * (Facility.longitude - longitude)
+            * math.cos(math.radians(latitude)) ** 2
+        )
+        query = query.order_by(distance_sq, Service.name, Facility.name, Service.id)
+    else:
+        query = query.order_by(Service.name, Facility.name, Service.id)
+
     return [
         {
             **ServiceRead.model_validate(service).model_dump(),
@@ -151,7 +197,7 @@ def search_services(
             "facility_address": facility.address,
             "facility_phone": facility.phone,
         }
-        for service, facility in query.order_by(Service.name, Facility.name, Service.id)
+        for service, facility in query
         .offset(offset)
         .limit(limit)
         .all()

@@ -33,13 +33,16 @@ export default function HomePage() {
   const [canScrollRight, setCanScrollRight] = useState(false);
   const facilitiesTrack = useRef<HTMLDivElement>(null);
   const city = searchParams.get("city") ?? "";
+  const latitude = Number(searchParams.get("latitude"));
+  const longitude = Number(searchParams.get("longitude"));
+  const hasCoordinates = searchParams.has("latitude") && searchParams.has("longitude") && Number.isFinite(latitude) && Number.isFinite(longitude);
 
   useEffect(() => {
     let active = true;
     setFacilities([]);
     setFacilitiesHaveMore(false);
     setError("");
-    getFacilities({ city: city || undefined, limit: 50 })
+    getFacilities({ city: city || undefined, latitude: hasCoordinates ? latitude : undefined, longitude: hasCoordinates ? longitude : undefined, limit: 50 })
       .then((items) => {
         if (active) {
           setFacilities(items);
@@ -52,7 +55,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [city]);
+  }, [city, hasCoordinates, latitude, longitude]);
 
   function updateCarouselScrollState() {
     const track = facilitiesTrack.current;
@@ -76,6 +79,8 @@ export default function HomePage() {
     try {
       const items = await getFacilities({
         city: city || undefined,
+        latitude: hasCoordinates ? latitude : undefined,
+        longitude: hasCoordinates ? longitude : undefined,
         limit: 50,
         offset: facilities.length,
       });
