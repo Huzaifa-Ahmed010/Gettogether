@@ -241,6 +241,12 @@ export default function AdminPage() {
     event.preventDefault();
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const latitudeText = String(form.get("latitude") ?? "").trim();
+    const longitudeText = String(form.get("longitude") ?? "").trim();
+    if (Boolean(latitudeText) !== Boolean(longitudeText)) {
+      setError("Enter both map latitude and longitude, or leave both blank.");
+      return;
+    }
     setDirectoryActionBusy("facility:onboarding", true);
     setError("");
     setNotice("");
@@ -253,6 +259,8 @@ export default function AdminPage() {
         phone: String(form.get("phone") ?? ""),
         description: String(form.get("description") ?? ""),
         timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
+        latitude: latitudeText ? Number(latitudeText) : null,
+        longitude: longitudeText ? Number(longitudeText) : null,
       });
       setNotice("Facility submitted. It will remain unavailable to patients until a platform administrator approves it.");
       await loadDirectory();
@@ -269,6 +277,12 @@ export default function AdminPage() {
     event.preventDefault();
     if (!selectedFacility) return;
     const form = new FormData(event.currentTarget);
+    const latitudeText = String(form.get("latitude") ?? "").trim();
+    const longitudeText = String(form.get("longitude") ?? "").trim();
+    if (Boolean(latitudeText) !== Boolean(longitudeText)) {
+      setError("Enter both map latitude and longitude, or leave both blank.");
+      return;
+    }
     const payload: Partial<Omit<Facility, "id">> = {
       name: String(form.get("name")),
       facility_type: String(form.get("facility_type")) as Facility["facility_type"],
@@ -277,8 +291,9 @@ export default function AdminPage() {
       phone: String(form.get("phone") ?? ""),
       description: String(form.get("description") ?? ""),
       timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
-      latitude: String(form.get("latitude") ?? "").trim() ? Number(form.get("latitude")) : null,
-      longitude: String(form.get("longitude") ?? "").trim() ? Number(form.get("longitude")) : null,
+      ...(latitudeText && longitudeText
+        ? { latitude: Number(latitudeText), longitude: Number(longitudeText) }
+        : {}),
     };
     const action = `facility:${selectedFacility.id}:save`;
     setDirectoryActionBusy(action, true);
