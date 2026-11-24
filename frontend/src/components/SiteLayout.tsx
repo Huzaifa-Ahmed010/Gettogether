@@ -10,12 +10,34 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const [city, setCity] = useState(searchParams.get("city") ?? "");
+  const [locationStatus, setLocationStatus] = useState("idle");
   const { user } = useAuth();
 
   useEffect(() => {
     setSearch(searchParams.get("search") ?? "");
     setCity(searchParams.get("city") ?? "");
+    setLocationStatus(searchParams.has("latitude") && searchParams.has("longitude") ? "detected" : "idle");
   }, [location.pathname, searchParams]);
+
+  useEffect(() => {
+    if (searchParams.has("city") || (searchParams.has("latitude") && searchParams.has("longitude"))) return;
+    if (!navigator.geolocation) { setLocationStatus("unavailable"); return; }
+    setLocationStatus("requesting");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const params = new URLSearchParams(searchParams);
+        params.set("latitude", String(position.coords.latitude));
+        params.set("longitude", String(position.coords.longitude));
+        params.delete("city");
+        setLocationStatus("detected");
+        navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+      },
+      () => setLocationStatus("denied"),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  // Request once per mounted site shell; do not repeatedly prompt during navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!location.hash) return;
@@ -39,7 +61,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
         <input aria-label="Search healthcare services" placeholder="Search doctors, hospitals, diagnostics..." value={search} onChange={(event) => setSearch(event.target.value)} />
         <button className="header-search-submit" aria-label="Submit search"><ArrowRight size={16} /></button>
       </form>
-      <label className="city-select"><MapPin size={16} aria-hidden="true" /><input aria-label="City" placeholder="Any city" value={city} onChange={(event) => setCity(event.target.value)} /></label>
+      <label className="city-select"><MapPin size={16} aria-hidden="true" /><input aria-label="City" placeholder={locationStatus === "requesting" ? "Finding your location…" : locationStatus === "detected" ? "Near your location" : "Any city"} value={city} onChange={(event) => setCity(event.target.value)} /></label>
       <nav aria-label="Main navigation">
         <NavLink to="/hospitals">Hospitals</NavLink>
         <NavLink to="/doctors">Doctors</NavLink>
