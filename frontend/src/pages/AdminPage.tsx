@@ -862,6 +862,8 @@ function FacilityFields({ facility }: { facility?: Facility }) {
     <label>Phone<input name="phone" maxLength={30} defaultValue={facility?.phone ?? ""} /></label>
     <label>Public description<textarea name="description" maxLength={2000} defaultValue={facility?.description ?? ""} /></label>
     <label>Timezone (IANA)<input name="timezone" maxLength={64} defaultValue={facility?.timezone ?? "Asia/Kolkata"} required /></label>
+    <label>Map latitude<input name="latitude" type="number" min="-90" max="90" step="any" defaultValue={facility?.latitude ?? ""} placeholder="e.g. 28.12345" /></label>
+    <label>Map longitude<input name="longitude" type="number" min="-180" max="180" step="any" defaultValue={facility?.longitude ?? ""} placeholder="e.g. 78.12345" /></label>
   </>;
 }
 
@@ -871,6 +873,7 @@ function ServiceFields({ service }: { service?: ManagedService }) {
     <label>Category<input name="category" minLength={2} maxLength={100} defaultValue={service?.category ?? ""} required /></label>
     <label>Type<select name="service_type" defaultValue={service?.service_type ?? "doctor"}><option value="doctor">Doctor</option><option value="diagnostic">Diagnostic</option></select></label>
     <label>Provider name<input name="provider_name" maxLength={180} defaultValue={service?.provider_name ?? ""} /></label>
+    <label>Shared doctor ID<input name="provider_key" minLength={2} maxLength={80} pattern="[A-Za-z0-9._-]+" defaultValue={service?.provider_key ?? ""} placeholder="Reuse for this doctor across all categories" /></label>
     <label>Fee (₹)<input name="fee" type="number" min="0" step="0.01" defaultValue={service ? (service.fee_paise / 100).toFixed(2) : "0.00"} required /></label>
   </>;
 }
