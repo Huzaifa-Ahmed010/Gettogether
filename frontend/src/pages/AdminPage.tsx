@@ -312,6 +312,10 @@ export default function AdminPage() {
       fee_paise: Math.round(Number(form.get("fee")) * 100),
     };
     const imageFile = form.get("image");
+    if (payload.service_type === "doctor" && !payload.provider_key) {
+      setError("Enter a shared doctor ID. Reuse the same ID for every service/category belonging to this doctor.");
+      return;
+    }
     setDirectoryActionBusy(action, true);
     setError("");
     setNotice("");
