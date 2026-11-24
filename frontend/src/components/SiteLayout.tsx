@@ -20,7 +20,7 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   }, [location.pathname, searchParams]);
 
   useEffect(() => {
-    if (searchParams.has("city") || (searchParams.has("latitude") && searchParams.has("longitude"))) return;
+    if ((user && user.role !== "patient") || searchParams.has("city") || (searchParams.has("latitude") && searchParams.has("longitude"))) return;
     if (!navigator.geolocation) { setLocationStatus("unavailable"); return; }
     setLocationStatus("requesting");
     navigator.geolocation.getCurrentPosition(
