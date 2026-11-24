@@ -576,7 +576,7 @@ export function getManagedServices(facilityId: number) {
 
 export function createFacilityService(
   facilityId: number,
-  payload: Omit<Service, "id" | "facility_id" | "is_active" | "facility_name" | "facility_city" | "facility_address" | "facility_phone">
+  payload: Omit<Service, "id" | "facility_id" | "is_active" | "facility_name" | "facility_city" | "facility_address" | "facility_phone" | "provider_key"> & { provider_key?: string | null }
 ) {
   return request<ManagedService>(`/facilities/${facilityId}/services`, {
     method: "POST",
