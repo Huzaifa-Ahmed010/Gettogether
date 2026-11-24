@@ -79,6 +79,9 @@ def create_booking(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if user.role != "patient":
+        raise HTTPException(403, "Only patient accounts can request appointments")
+
     facility = db.get(Facility, payload.facility_id)
     service = db.get(Service, payload.service_id)
     if not facility or not facility.is_active:
@@ -91,6 +94,21 @@ def create_booking(
         raise HTTPException(422, "Only payment at the facility is currently available")
 
     require_facility_entitlement(db, facility.id, operational_write=True)
+    provider_key = (
+        " ".join(service.provider_name.casefold().split())[:180]
+        if service.service_type == "doctor" and service.provider_name.strip()
+        else None
+    )
+    if service.service_type == "doctor" and provider_key is None:
+        raise HTTPException(422, "A doctor identity is required before this service can accept bookings")
+    if provider_key is not None:
+        occupied = db.query(Booking.id).filter(
+            Booking.provider_key == provider_key,
+            Booking.appointment_at == payload.appointment_at,
+        ).first()
+        if occupied:
+            raise HTTPException(409, "This doctor already has an appointment request for that time")
+
     booking = Booking(
         patient_user_id=user.id,
         patient_name=user.name,
@@ -98,6 +116,7 @@ def create_booking(
         facility_id=facility.id,
         service_id=service.id,
         appointment_at=payload.appointment_at,
+        provider_key=provider_key,
         payment_method="physical",
         payment_status="unpaid" if service.fee_paise else "not_required",
         payment_due_paise=service.fee_paise,
@@ -109,8 +128,10 @@ def create_booking(
         db.flush()
         record_audit_event(db, user, "booking.created", "booking", booking.id)
         db.commit()
-    except IntegrityError:
+    except IntegrityError as error:
         db.rollback()
+        if provider_key is not None:
+            raise HTTPException(409, "This doctor already has an appointment request for that time") from error
         raise HTTPException(503, "Could not create booking; please retry")
     db.refresh(booking)
     return BookingCreated(
@@ -388,6 +409,7 @@ def cancel_booking(
     if booking.payment_status == "paid":
         raise HTTPException(409, "Paid appointments require a refund or credit decision before cancellation")
     booking.status = "cancelled"
+    booking.provider_key = None
     booking.verification_code = None
     booking.verification_code_delivery = None
     record_audit_event(db, user, "booking.cancelled", "booking", booking.id)
