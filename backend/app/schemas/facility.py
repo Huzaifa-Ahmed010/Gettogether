@@ -1,6 +1,6 @@
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 class FacilityCreate(BaseModel):
     name: str = Field(min_length=2, max_length=180)
@@ -10,6 +10,14 @@ class FacilityCreate(BaseModel):
     phone: str = ""
     description: str = Field(default="", max_length=2000)
     timezone: str = Field(default="Asia/Kolkata", min_length=1, max_length=64)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def validate_coordinates(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be supplied together")
+        return self
 
     @field_validator("timezone")
     @classmethod
