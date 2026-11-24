@@ -495,6 +495,7 @@ def complete_managed_booking(
     if booking.status != "checked_in":
         raise HTTPException(409, "Only checked-in appointments can be completed")
     booking.status = "completed"
+    booking.provider_key = None
     booking.completed_at = datetime.now(timezone.utc)
     record_audit_event(db, user, "booking.completed", "booking", booking.id)
     db.commit()
