@@ -95,12 +95,12 @@ def create_booking(
 
     require_facility_entitlement(db, facility.id, operational_write=True)
     provider_key = (
-        " ".join(service.provider_name.casefold().split())[:180]
+        service.provider_key
         if service.service_type == "doctor" and service.provider_name.strip()
         else None
     )
-    if service.service_type == "doctor" and provider_key is None:
-        raise HTTPException(422, "A doctor identity is required before this service can accept bookings")
+    if service.service_type == "doctor" and not provider_key:
+        raise HTTPException(422, "This doctor service is missing its shared provider identity. Ask facility staff to configure it before booking.")
     if provider_key is not None:
         occupied = db.query(Booking.id).filter(
             Booking.provider_key == provider_key,
