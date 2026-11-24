@@ -30,6 +30,7 @@ class Service(Base):
     category: Mapped[str] = mapped_column(String(100), index=True)
     service_type: Mapped[str] = mapped_column(String(30))  # doctor | diagnostic
     provider_name: Mapped[str] = mapped_column(String(180), default="")
+    provider_key: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     fee_paise: Mapped[int] = mapped_column(Integer)  # integer minor units; INR rupees * 100
     image_content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     image_media_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
