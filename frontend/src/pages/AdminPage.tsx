@@ -277,6 +277,8 @@ export default function AdminPage() {
       phone: String(form.get("phone") ?? ""),
       description: String(form.get("description") ?? ""),
       timezone: String(form.get("timezone") ?? "Asia/Kolkata"),
+      latitude: String(form.get("latitude") ?? "").trim() ? Number(form.get("latitude")) : null,
+      longitude: String(form.get("longitude") ?? "").trim() ? Number(form.get("longitude")) : null,
     };
     const action = `facility:${selectedFacility.id}:save`;
     setDirectoryActionBusy(action, true);
@@ -306,6 +308,7 @@ export default function AdminPage() {
       category: String(form.get("category")),
       service_type: String(form.get("service_type")) as ManagedService["service_type"],
       provider_name: String(form.get("provider_name") ?? ""),
+      provider_key: String(form.get("provider_key") ?? "").trim() || null,
       fee_paise: Math.round(Number(form.get("fee")) * 100),
     };
     const imageFile = form.get("image");
