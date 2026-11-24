@@ -318,16 +318,17 @@ export default function AdminPage() {
     const action = existing
       ? `service:${existing.id}:save`
       : `service:create:${selectedFacility.id}`;
+    const providerKey = String(form.get("provider_key") ?? "").trim();
     const payload = {
       name: String(form.get("name")),
       category: String(form.get("category")),
       service_type: String(form.get("service_type")) as ManagedService["service_type"],
       provider_name: String(form.get("provider_name") ?? ""),
-      provider_key: String(form.get("provider_key") ?? "").trim() || null,
+      ...(providerKey ? { provider_key: providerKey } : {}),
       fee_paise: Math.round(Number(form.get("fee")) * 100),
     };
     const imageFile = form.get("image");
-    if (payload.service_type === "doctor" && !payload.provider_key) {
+    if (payload.service_type === "doctor" && !providerKey) {
       setError("Enter a shared doctor ID. Reuse the same ID for every service/category belonging to this doctor.");
       return;
     }
