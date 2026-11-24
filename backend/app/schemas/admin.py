@@ -29,6 +29,8 @@ class FacilityUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_patch(self):
+        if ("latitude" in self.model_fields_set) != ("longitude" in self.model_fields_set):
+            raise ValueError("latitude and longitude must be updated together")
         if not self.model_fields_set:
             raise ValueError("At least one field must be provided")
         if any(getattr(self, field) is None for field in self.model_fields_set):
