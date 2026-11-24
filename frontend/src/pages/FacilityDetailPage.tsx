@@ -140,7 +140,9 @@ export default function FacilityDetailPage() {
     .toISOString()
     .slice(0, 16);
   const directionsUrl = facility
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${facility.address}, ${facility.city}`)}`
+    ? facility.latitude !== null && facility.longitude !== null
+      ? `https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${facility.name}, ${facility.address}, ${facility.city}`)}`
     : "";
 
   return <SiteLayout>
@@ -184,7 +186,7 @@ export default function FacilityDetailPage() {
           </section>
           <section className="booking-panel" id="book-appointment">
             <h2>Book an appointment</h2>
-            {!user ? <p><Link to="/login">Sign in or create an account</Link> to book at this center.</p> : booking ? <div className="booking-confirmation" role="status">
+            {!user ? <p><Link to="/login">Sign in or create an account</Link> to book at this center.</p> : user.role !== "patient" ? <p>Appointment requests are available to patient accounts only. Use your management workspace to manage this facility or the platform.</p> : booking ? <div className="booking-confirmation" role="status">
               <h3>Appointment request submitted</h3>
               <p>Your request reference is <strong>#{booking.id}</strong>. The facility will review the request; a check-in code becomes available in My bookings only after it is confirmed.</p>
               <p>Payment is due at the facility. Track the request in <Link to="/bookings">My bookings</Link>.</p>
