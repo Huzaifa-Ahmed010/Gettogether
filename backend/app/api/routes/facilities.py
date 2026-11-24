@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -90,7 +91,7 @@ def list_facilities(
         query = query.filter(Facility.city.ilike(f"%{city}%"))
     if latitude is not None and longitude is not None:
         lat_delta = radius_km / 110.574
-        lon_delta = radius_km / max(1.0, 111.320 * abs(__import__("math").cos(__import__("math").radians(latitude))))
+        lon_delta = radius_km / max(1.0, 111.320 * abs(math.cos(math.radians(latitude))))
         query = query.filter(
             Facility.latitude.is_not(None), Facility.longitude.is_not(None),
             Facility.latitude.between(latitude - lat_delta, latitude + lat_delta),
