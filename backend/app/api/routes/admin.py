@@ -470,6 +470,7 @@ def reject_managed_booking(
     if booking.status != "requested":
         raise HTTPException(409, "Only requested appointments can be rejected")
     booking.status = "rejected"
+    booking.provider_key = None
     booking.rejection_reason = payload.reason
     booking.verification_code = None
     booking.verification_code_delivery = None
@@ -523,6 +524,7 @@ def cancel_managed_booking(
     if booking.payment_status == "paid":
         raise HTTPException(409, "Paid appointments require a refund or credit decision before cancellation")
     booking.status = "cancelled"
+    booking.provider_key = None
     booking.verification_code = None
     booking.verification_code_delivery = None
     record_audit_event(db, user, "booking.cancelled", "booking", booking.id)
