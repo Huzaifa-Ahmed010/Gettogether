@@ -58,13 +58,13 @@ def upgrade() -> None:
             bookings.update().where(bookings.c.id == row.id).values(provider_key=row.provider_key)
         )
 
-    op.create_unique_constraint(
-        "uq_booking_provider_slot", "bookings", ["provider_key", "appointment_at"]
+    op.create_index(
+        "uq_booking_provider_slot", "bookings", ["provider_key", "appointment_at"], unique=True
     )
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_booking_provider_slot", "bookings", type_="unique")
+    op.drop_index("uq_booking_provider_slot", table_name="bookings")
     op.drop_index("ix_bookings_provider_key", table_name="bookings")
     op.drop_index("ix_services_provider_key", table_name="services")
     op.drop_column("bookings", "provider_key")
