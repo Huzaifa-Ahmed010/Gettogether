@@ -38,7 +38,14 @@ class ServiceCreate(BaseModel):
     category: str = Field(min_length=2, max_length=100)
     service_type: str = Field(pattern="^(doctor|diagnostic)$")
     provider_name: str = ""
+    provider_key: str | None = Field(default=None, min_length=2, max_length=80, pattern="^[A-Za-z0-9._-]+$")
     fee_paise: int = Field(ge=0, description="Fee in paise (INR × 100)")
+
+    @model_validator(mode="after")
+    def require_doctor_identity(self):
+        if self.service_type == "doctor" and not self.provider_key:
+            raise ValueError("A stable provider key is required for doctor services. Reuse the same key for every service/category belonging to that doctor.")
+        return self
 
 class ServiceRead(ServiceCreate):
     id: int
