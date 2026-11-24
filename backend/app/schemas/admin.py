@@ -41,6 +41,7 @@ class ServiceUpdate(BaseModel):
     category: str | None = Field(default=None, min_length=2, max_length=100)
     service_type: Literal["doctor", "diagnostic"] | None = None
     provider_name: str | None = Field(default=None, max_length=180)
+    provider_key: str | None = Field(default=None, min_length=2, max_length=80, pattern="^[A-Za-z0-9._-]+$")
     fee_paise: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
 
