@@ -121,7 +121,11 @@ def list_facilities(
             )
         )
     if latitude is not None and longitude is not None:
-        distance_sq = ((Facility.latitude - latitude) * (Facility.latitude - latitude) + (Facility.longitude - longitude) * (Facility.longitude - longitude))
+        distance_sq = (
+            (Facility.latitude - latitude) * (Facility.latitude - latitude)
+            + (Facility.longitude - longitude) * (Facility.longitude - longitude)
+            * math.cos(math.radians(latitude)) ** 2
+        )
         query = query.order_by(distance_sq, Facility.name, Facility.id)
     else:
         query = query.order_by(Facility.name, Facility.id)
@@ -175,6 +179,16 @@ def search_services(
             )
         )
 
+    if latitude is not None and longitude is not None:
+        distance_sq = (
+            (Facility.latitude - latitude) * (Facility.latitude - latitude)
+            + (Facility.longitude - longitude) * (Facility.longitude - longitude)
+            * math.cos(math.radians(latitude)) ** 2
+        )
+        query = query.order_by(distance_sq, Service.name, Facility.name, Service.id)
+    else:
+        query = query.order_by(Service.name, Facility.name, Service.id)
+
     return [
         {
             **ServiceRead.model_validate(service).model_dump(),
@@ -183,7 +197,7 @@ def search_services(
             "facility_address": facility.address,
             "facility_phone": facility.phone,
         }
-        for service, facility in query.order_by(Service.name, Facility.name, Service.id)
+        for service, facility in query
         .offset(offset)
         .limit(limit)
         .all()
