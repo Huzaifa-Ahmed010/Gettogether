@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer), sa.Column("service_type", sa.String(30)),
         sa.Column("provider_key", sa.String(80)),
     )
-    for row in bind.execute(sa.select(services.c.id, services.c.service_type, services.c.provider_key)):
+    for row in bind.execute(sa.select(services.c.id, services.c.service_type, services.c.provider_key)).all():
         if row.service_type == "doctor" and not row.provider_key:
             bind.execute(
                 services.update().where(services.c.id == row.id).values(provider_key=f"legacy-{row.id}")
